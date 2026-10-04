@@ -9,6 +9,10 @@ description = "UKB EHR pretraining and calendar-landmark cancer cohorts"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "pandas>=2.1", "pyarrow>=14", "polars>=1.0", "tqdm>=4.60"]
 
+[project.optional-dependencies]
+# Model steps 10-13. Install torch matching the server CUDA first if it is not already present.
+models = ["torch>=2.1", "scikit-learn>=1.3", "scipy>=1.10", "lightgbm>=4.0", "xgboost>=2.0"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["source_code*"]
