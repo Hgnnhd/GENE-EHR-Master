@@ -10,9 +10,9 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from source_code import run_all
+build_data = importlib.import_module("source_code.01_build_data")
 
-validate = importlib.import_module("source_code.09_validate").validate
+validate = importlib.import_module("source_code.lib.data_validate").validate
 ROOT = Path(__file__).resolve().parents[1]
 
 ID = "Participant ID"
@@ -111,7 +111,7 @@ def built(tmp_path, monkeypatch):
                                   "coverage_manifest": str(manifest)}))
     args = argparse.Namespace(ukb_fields=ehr, hospital_cancer=old, config=config, output=tmp_path / "out",
                               report=tmp_path / "report", start=None, stop=None, only=None)
-    run_all.run(args)
+    build_data.run(args)
     return args
 
 
@@ -165,24 +165,24 @@ def test_synthetic_inputs_and_validation(built):
     assert set(summary.split) <= {"train", "validation", "test"} and "participant_id" not in summary.columns
 
 
-def test_rerun_from_middle_step(built):
+def test_rerun_from_middle_stage(built):
     status = pd.read_parquet(built.output / "landmark_status.parquet")
-    built.start = "05"
-    run_all.run(built)
+    built.start = "cohort"
+    build_data.run(built)
     pd.testing.assert_frame_equal(status, pd.read_parquet(built.output / "landmark_status.parquet"))
     summary = json.loads((built.report / "build_summary.json").read_text())
-    assert sorted(summary) == [f"step_{k}" for k in ["01", "02", "03", "04", "05", "06", "07", "08"]]
+    assert list(summary) == ["participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus"]
     assert (built.output / "BUILD_COMPLETE.json").exists()
 
 
-def test_single_step_invalidates_build(built):
-    importlib.import_module("source_code.06_model_inputs").run(built)
+def test_single_stage_invalidates_build(built):
+    importlib.import_module("source_code.lib.data_inputs").run(built)
     assert not (built.output / "BUILD_COMPLETE.json").exists()
     with pytest.raises(RuntimeError):
         validate(built.output, built.config)
 
 
-@pytest.mark.parametrize("script", ["01_participants.py", "05_landmark_cohort.py", "09_validate.py", "run_all.py"])
+@pytest.mark.parametrize("script", ["01_build_data.py", "02_pretrain.py", "03_train_models.py", "04_evaluate.py"])
 def test_steps_run_as_scripts(script):
     out = subprocess.run([sys.executable, str(ROOT / "source_code" / script), "--help"], capture_output=True, text=True, cwd="/")
     assert out.returncode == 0, out.stderr

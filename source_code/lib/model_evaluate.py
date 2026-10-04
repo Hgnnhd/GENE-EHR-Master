@@ -1,28 +1,20 @@
-"""Step 13 · Evaluate every trained model on the same nodes and labels.
+"""Evaluate every trained model on the same nodes and labels.
 
 Per model x landmark x cancer site on the evaluation split (default test): AUROC with
 participant-level bootstrap CI, AUPRC, Brier score, calibration-in-the-large and slope.
 Each landmark node is one participant, so per-landmark bootstrap resamples participants.
 Writes metrics.csv and auroc_table.csv under <report>/models/<label_mode>/.
-
-Run: python source_code/13_evaluate.py [--label-mode ...] [--bootstrap 200]
 """
 from pathlib import Path
 
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import json
 
-import numpy as np
 import pandas as pd
 
-from .common import ID, log, progress, say
+from .common import ID, banner, log, progress, say
 from .definitions import SITES
-from .metrics import summarize
-from .model_data import PROVISIONAL_WARNING, SITE_KEYS, label_matrix, load_config, model_parser, results_dir
+from .model_metrics import summarize
+from .model_data import PROVISIONAL_WARNING, SITE_KEYS, label_matrix, load_config, results_dir
 
 
 def run(args):
@@ -30,13 +22,13 @@ def run(args):
     mode = args.label_mode or cfg["label_mode"]
     split = args.split or cfg["evaluate"]["split"]
     bootstrap = cfg["evaluate"]["bootstrap"] if args.bootstrap is None else args.bootstrap
-    say(f"\n{'=' * 64}\n  Step 13  Evaluate models on {split} (labels: {mode})\n{'=' * 64}")
+    banner(f"Evaluate models on {split} (labels: {mode})")
     if mode == "provisional_observed":
         log("WARNING " + PROVISIONAL_WARNING)
     root = Path(args.output) / "models" / mode
     runs = sorted(p.parent for p in root.glob("*/predictions.parquet"))
     if not runs:
-        raise SystemExit(f"no predictions under {root}: run steps 11/12 first")
+        raise SystemExit(f"no predictions under {root}: run 03_train_models.py first")
     cols = [ID, "landmark", "sex"] + [f"label_{s}_5y" for s in SITE_KEYS] + [f"observed_{s}_5y" for s in SITE_KEYS]
     samples = pd.read_parquet(Path(args.output) / "landmark_samples.parquet", columns=cols)
     labels = pd.DataFrame(label_matrix(samples, mode), columns=SITE_KEYS)
@@ -71,10 +63,3 @@ def run(args):
     log(f"{len(runs)} models evaluated; metrics -> {out / 'metrics.csv'}")
     if mode == "provisional_observed":
         log("Reminder: provisional labels — do not report these numbers.")
-
-
-if __name__ == "__main__":
-    ap = model_parser(__doc__)
-    ap.add_argument("--split", choices=["validation", "test"])
-    ap.add_argument("--bootstrap", type=int, help="bootstrap replicates for AUROC CIs (0 = off)")
-    run(ap.parse_args())

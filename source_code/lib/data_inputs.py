@@ -1,27 +1,18 @@
-"""Step 06 · EHR-only model inputs: pre-landmark code sequences per candidate node.
+"""Data stage · EHR-only model inputs: pre-landmark code sequences per candidate node.
 
 Writes landmark_inputs.parquet, one row per landmark_samples row with equal-length lists
 codes / dates / days_before / day_index / sources, sorted by date then code.
-
-Run: python source_code/06_model_inputs.py
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import polars as pl
 
-from .common import ID, Context, fmt, log, parser
+from .common import ID, Context, fmt, log
 
-STEP, TITLE = "06", "EHR-only model input sequences"
+STAGE, TITLE = "inputs", "EHR-only model input sequences"
 LISTS = ["codes", "dates", "days_before", "day_index", "sources"]
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE)
+    ctx = Context(args, STAGE, TITLE)
     ctx.require("landmark_samples.parquet", "events.parquet")
     us = pl.Datetime("us")
     log("Joining candidate nodes with history codes before each landmark")
@@ -49,7 +40,3 @@ def run(args):
                                  "empty_history": int((seq["n_codes"] == 0).sum())}
     ctx.done(*[f"{r['landmark'].date()}: {fmt(r['rows'])} sequences; codes median {r['median']:.0f}, "
                f"p95 {r['p95']:.0f}; empty {fmt(r['empty'])}" for r in stats.iter_rows(named=True)])
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

@@ -1,32 +1,23 @@
-"""Step 03 · Medical history: first-occurrence and inpatient ICD-10 codes.
+"""Data stage · Medical history: first-occurrence and inpatient ICD-10 codes.
 
 Combines UKB first occurrences and inpatient diagnoses (record.csv) into one earliest
 reliable date per participant x ICD-10 3-character code (events.parquet). Adds
 first_hospital_cancer and the hospital quality flags to participants.
-
-Run: python source_code/03_medical_history.py
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 from collections import Counter
 
 import polars as pl
 
-from .common import ID, Context, fmt, log, parser, progress, read_chunks
+from .common import ID, Context, fmt, log, progress, read_chunks
 from .definitions import dates
 
-STEP, TITLE = "03", "Medical history codes (first occurrences + inpatient)"
+STAGE, TITLE = "history", "Medical history codes (first occurrences + inpatient)"
 NEEDS = [("ukb_fields", "UKB_First_occurrences.csv"), ("hospital_cancer", "record.csv")]
 MALIGNANT = pl.col("code").str.contains(r"^C\d{2}$") & (pl.col("code") != "C44") & (pl.col("code") <= "C97")
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE, NEEDS)
+    ctx = Context(args, STAGE, TITLE, NEEDS)
     p = ctx.participants()
 
     log("Reading first occurrences")
@@ -105,7 +96,3 @@ def run(args):
              "by source: " + ", ".join(f"{k} {fmt(v)}" for k, v in sorted(sources.items())),
              f"inpatient array mismatches: {fmt(len(mismatches))} people; unresolved inpatient malignancy: "
              f"{fmt(p.hospital_malignancy_unresolved.sum())} people")
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

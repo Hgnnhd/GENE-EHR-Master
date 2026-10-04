@@ -1,28 +1,19 @@
-"""Step 02 · Cancer registry: pair date and code per Instance, derive first malignancy.
+"""Data stage · Cancer registry: pair date and code per Instance, derive first malignancy.
 
 Writes cancer_events.parquet and adds first_registry_cancer, first_cancer_sites and
 registry_unresolved to participants.
-
-Run: python source_code/02_cancer_registry.py
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import pandas as pd
 
-from .common import ID, Context, fmt, log, parser, progress, read, save
+from .common import ID, Context, fmt, log, progress, read, save
 from .definitions import SITES, classify, dates
 
-STEP, TITLE = "02", "Cancer registry and first malignancy"
+STAGE, TITLE = "registry", "Cancer registry and first malignancy"
 NEEDS = [("hospital_cancer", "cancer.csv")]
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE, NEEDS)
+    ctx = Context(args, STAGE, TITLE, NEEDS)
     p = ctx.participants()
     log("Reading cancer registry (cancer.csv)")
     c = read(ctx.source(ctx.hosp, "cancer.csv")).set_index(ID)
@@ -60,7 +51,3 @@ def run(args):
     ctx.done(f"registry entries: {fmt(len(r))}; flagged for QC: {fmt(r.qc.ne('valid').sum())}",
              f"people with a valid non-C44 malignancy: {fmt(p.first_registry_cancer.notna().sum())}",
              "target-site people (any time): " + ", ".join(f"{k} {fmt(v)}" for k, v in top.items()))
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

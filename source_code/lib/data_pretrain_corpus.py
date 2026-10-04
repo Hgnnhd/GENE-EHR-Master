@@ -1,17 +1,10 @@
-"""Step 08 · Pretraining data and vocabulary; closes the build.
+"""Data stage · Pretraining data and vocabulary; closes the build.
 
 Keeps only train-split participants' history codes before the pretraining cutoff,
 builds the vocabulary from the internal pretraining-train role, then writes
 build_manifest.json and BUILD_COMPLETE.json once every earlier output is present.
-
-Run: python source_code/08_pretraining.py
 """
 from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
 
 import json
 
@@ -19,16 +12,16 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from .common import ID, ROOT, Context, dump, fmt, log, parser, pipeline_hash, save
+from .common import ID, ROOT, Context, dump, fmt, log, pipeline_hash, save
 
-STEP, TITLE = "08", "Pretraining data, vocabulary and build manifest"
+STAGE, TITLE = "pretrain_corpus", "Pretraining data, vocabulary and build manifest"
 OUTPUTS = ["participants.parquet", "cancer_events.parquet", "events.parquet", "self_report_cancer.parquet",
            "landmark_status.parquet", "landmark_samples.parquet", "landmark_inputs.parquet", "features_asof.parquet"]
 SPECIAL = {"PAD": 0, "UNK": 1, "MASK": 2, "CLS": 3, "EMPTY": 4}
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE)
+    ctx = Context(args, STAGE, TITLE)
     ctx.require(*OUTPUTS)
     p = ctx.participants()
     log("Selecting train-split history before the pretraining cutoff")
@@ -61,7 +54,3 @@ def run(args):
              f"pretraining events: {fmt(ev.height)}; vocabulary: {fmt(len(vocab))} codes + {len(SPECIAL)} special tokens")
     (ctx.out / "BUILD_COMPLETE.json").write_text(json.dumps({"pipeline_sha256": code_hash, "coverage_status": coverage["status"]}), encoding="utf-8")
     log("Build complete: all research tables written")
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

@@ -1,32 +1,20 @@
-"""Run pretraining, every baseline and the main model across GPUs, then evaluate (steps 10-13).
+"""Run pretraining and model training as parallel jobs, one per GPU, with a live status table.
 
-  python source_code/run_models.py --gpus 0,1,2,3,4,5
-  python source_code/run_models.py --gpus 0,1 --models gru,ehr_transformer
-  python source_code/run_models.py --label-mode provisional_observed   # pipeline debugging only
-
-One job per GPU at a time: 10_pretrain for BEHRT / Med-BERT / ehr_transformer, then their
-fine-tuning in 12_deep_models; the other deep models start immediately; 11_classical_baselines
-runs as one job (XGBoost uses its GPU). Each job logs to logs/<job>.log; this script prints a
-status table while they run. Existing pretrained weights are reused unless --repretrain.
+Used by 03_train_models.py. Pretrained transformers (BEHRT, Med-BERT, ehr_transformer) get a
+02_pretrain.py job unless weights already exist (or --repretrain); their training job waits
+for it. Every other model, classical ones included, is its own 03_train_models.py --model job.
+Each job logs to <log-dir>/<job>.log.
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/run_models.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
-import argparse
-import importlib
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
 
-from .common import ROOT, log, say
-from .model_data import load_config, model_dir, model_parser
+from .common import ROOT, say
+from .model_data import load_config, model_dir
 
-HERE = Path(__file__).resolve().parent
+SCRIPTS = Path(__file__).resolve().parents[1]
 
 
 class Job:
@@ -42,26 +30,18 @@ class Job:
         return lines[-1].strip()[:90] if lines else ""
 
 
-def plan(cfg, args, mode):
-    deep = cfg["deep_models"]
-    chosen = args.models.split(",") if args.models else list(deep) + ["classical"]
+def plan(cfg, args, mode, names):
     common = ["--output", str(args.output), "--report", str(args.report), "--config", str(args.config),
-              "--model-config", str(args.model_config), "--label-mode", mode]
+              "--model-config", str(args.model_config), "--label-mode", mode, "--no-evaluate"]
     jobs = []
-    for name in chosen:
-        if name == "classical" or name in cfg["classical_models"]:
-            continue
-        mcfg = deep[name]
+    for name in names:
         after = []
-        if mcfg.get("pretrain"):
+        if cfg["deep_models"].get(name, {}).get("pretrain"):
             exists = (model_dir(args.output, "pretrained", name) / "encoder.pt").exists()
             if args.repretrain or not exists:
-                jobs.append(Job(f"pretrain_{name}", "10_pretrain.py", common + ["--model", name]))
+                jobs.append(Job(f"pretrain_{name}", "02_pretrain.py", common[:-1] + ["--model", name]))
                 after = [f"pretrain_{name}"]
-        jobs.append(Job(f"train_{name}", "12_deep_models.py", common + ["--model", name], after))
-    classical = [m for m in chosen if m in cfg["classical_models"]] or (list(cfg["classical_models"]) if "classical" in chosen else [])
-    if classical:
-        jobs.append(Job("classical", "11_classical_baselines.py", common + ["--models", ",".join(classical)]))
+        jobs.append(Job(f"train_{name}", "03_train_models.py", common + ["--model", name], after))
     return jobs
 
 
@@ -74,13 +54,14 @@ def status(jobs):
     return "\n".join(lines)
 
 
-def run(args):
+def schedule(args, names):
+    """Run jobs for `names` on args.gpus (CPU if none); returns the names whose training finished."""
     cfg = load_config(args.model_config)
     mode = args.label_mode or cfg["label_mode"]
     gpus = [g.strip() for g in args.gpus.split(",") if g.strip()] if args.gpus else ["cpu"]
     log_dir = Path(getattr(args, "log_dir", None) or ROOT / "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
-    jobs = plan(cfg, args, mode)
+    jobs = plan(cfg, args, mode, names)
     say("Model plan (label mode %s, GPUs %s):\n" % (mode, ",".join(gpus))
         + "\n".join(f"  {j.name:<28} {j.script}" + (f"  after {', '.join(sorted(j.after))}" if j.after else "") for j in jobs))
     free, last_print = list(gpus), 0
@@ -100,36 +81,18 @@ def run(args):
                 if j.gpu != "cpu":
                     env["CUDA_VISIBLE_DEVICES"] = j.gpu
                 handle = open(log_dir / f"{j.name}.log", "w")
-                j.proc = subprocess.Popen([sys.executable, str(HERE / j.script)] + j.extra + device,
+                j.proc = subprocess.Popen([sys.executable, str(SCRIPTS / j.script)] + j.extra + device,
                                           stdout=handle, stderr=subprocess.STDOUT, env=env, cwd=ROOT)
                 j.state, j.t0 = "running", time.time()
                 say(f"[{j.name}] started on {'GPU ' + j.gpu if j.gpu != 'cpu' else 'CPU'}")
         for j in jobs:
             j.last = j.tail(log_dir) if j.state != "waiting" else ""
-        if time.time() - last_print >= args.status_every:
+        if time.time() - last_print >= getattr(args, "status_every", 60):
             say("\n" + status(jobs) + "\n")
             last_print = time.time()
         time.sleep(2)
     say("\n" + status(jobs))
     failed = [j.name for j in jobs if j.state != "done"]
-    if any(j.state == "done" for j in jobs if not j.name.startswith("pretrain_")):
-        importlib.import_module(f"{__package__}.13_evaluate").run(argparse.Namespace(
-            output=args.output, report=args.report, config=args.config, model_config=args.model_config,
-            label_mode=mode, device=None, split=None, bootstrap=args.bootstrap))
     if failed:
-        raise SystemExit(f"jobs not completed: {', '.join(failed)} (see {log_dir})")
-
-
-def main():
-    ap = model_parser(__doc__)
-    ap.add_argument("--gpus", help="comma-separated GPU ids, e.g. 0,1,2,3,4,5 (default: run on CPU, one job at a time)")
-    ap.add_argument("--models", help="subset of deep model names and/or classical model names ('classical' = all)")
-    ap.add_argument("--repretrain", action="store_true", help="redo step 10 even if pretrained weights exist")
-    ap.add_argument("--bootstrap", type=int, help="bootstrap replicates in step 13")
-    ap.add_argument("--status-every", type=int, default=60, help="seconds between status tables")
-    ap.add_argument("--log-dir", type=Path, default=ROOT / "logs", help="per-job log files")
-    run(ap.parse_args())
-
-
-if __name__ == "__main__":
-    main()
+        say(f"jobs not completed: {', '.join(failed)} (see {log_dir})")
+    return [j.name[len("train_"):] for j in jobs if j.name.startswith("train_") and j.state == "done"], failed

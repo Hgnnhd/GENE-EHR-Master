@@ -1,26 +1,17 @@
-"""Step 07 · Enhanced inputs: latest pre-landmark risk factors.
+"""Data stage · Enhanced inputs: latest pre-landmark risk factors.
 
 For each candidate node, takes the most recent non-missing value assessed before the
 landmark, with its assessment Instance, date, age in days and a missing flag
 (features_asof.parquet, feature_catalog.csv).
-
-Run: python source_code/07_risk_factors.py
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import re
 
 import pandas as pd
 
-from .common import ID, Context, fmt, log, parser, progress, read_chunks, save
+from .common import ID, Context, fmt, log, progress, read_chunks, save
 from .definitions import dates
 
-STEP, TITLE = "07", "Pre-landmark risk factors (enhanced inputs)"
+STAGE, TITLE = "risk_factors", "Pre-landmark risk factors (enhanced inputs)"
 SPLIT_DIR = "Base_Information_split"
 # Keep blood chemistry only; urine measures/flags are outside this v1 feature set.
 SELECTIONS = {
@@ -35,7 +26,7 @@ NEEDS = [("ukb_fields", "UKB_visit_and_followup_dates.csv")] + [("ukb_fields", f
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE, NEEDS)
+    ctx = Context(args, STAGE, TITLE, NEEDS)
     ctx.require("landmark_samples.parquet")
     vis = ctx.visits()
     nodes = pd.read_parquet(ctx.out / "landmark_samples.parquet", columns=[ID, "landmark"])
@@ -92,7 +83,3 @@ def run(args):
     ctx.done(f"{fmt(len(features))} candidate nodes x {len(catalog)} fields",
              "lowest missingness: " + ", ".join(f"{k.removesuffix('__missing')} {v:.1%}" for k, v in miss.head(3).items()),
              "highest missingness: " + ", ".join(f"{k.removesuffix('__missing')} {v:.1%}" for k, v in miss.tail(3).items()))
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

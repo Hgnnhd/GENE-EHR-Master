@@ -11,10 +11,10 @@ import pytest
 import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from source_code.definitions import SITES
-from source_code.metrics import auprc, auroc, calibration
-from source_code.model_data import SPECIAL, NodeData, PretrainData, collate, label_matrix, mlm_collate
-from source_code.models import build_model
+from source_code.lib.definitions import SITES
+from source_code.lib.model_metrics import auprc, auroc, calibration
+from source_code.lib.model_data import SPECIAL, NodeData, PretrainData, collate, label_matrix, mlm_collate
+from source_code.lib.model_nets import build_model
 
 ID = "participant_id"
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,12 +134,11 @@ def test_forward_shapes(processed, name):
 
 
 def test_pipeline_pretrain_train_evaluate(processed):
-    step("10_pretrain").run(args(processed, model="ehr_transformer"))
+    step("02_pretrain").run(args(processed, model="ehr_transformer"))
     assert (processed.output / "models/pretrained/ehr_transformer/encoder.pt").exists()
-    for name in ["ehr_transformer", "gru", "retain"]:
-        step("12_deep_models").run(args(processed, model=name))
-    step("11_classical_baselines").run(args(processed, models="logistic_regression,random_forest,lightgbm,xgboost"))
-    step("13_evaluate").run(args(processed, split=None, bootstrap=None))
+    for name in ["ehr_transformer", "gru", "retain", "logistic_regression", "random_forest", "lightgbm", "xgboost"]:
+        step("03_train_models").run(args(processed, model=name, no_evaluate=True))
+    step("lib.model_evaluate").run(args(processed, split=None, bootstrap=None))
     metrics = pd.read_csv(processed.report / "models/verified/metrics.csv")
     assert set(metrics.model) == {"ehr_transformer", "gru", "retain", "logistic_regression", "random_forest", "lightgbm", "xgboost"}
     assert set(metrics.landmark) == {"2011-01-01", "2016-01-01"}
@@ -159,13 +158,13 @@ def test_unverified_labels_refuse_training(processed, tmp_path):
     samples.to_parquet(out / "landmark_samples.parquet", index=False)
     (out / "BUILD_COMPLETE.json").write_text("{}")
     with pytest.raises(SystemExit, match="No verified 5-year labels"):
-        step("12_deep_models").run(args(processed, output=out, model="gru"))
+        step("03_train_models").run(args(processed, output=out, model="gru", no_evaluate=True))
     y = label_matrix(samples, "provisional_observed")
     assert np.nanmax(y) == 1
 
 
 def test_run_models_scheduler(processed, tmp_path):
-    step("run_models").run(args(processed, gpus=None, models="mlp,lstm", repretrain=False, bootstrap=0,
+    step("03_train_models").run(args(processed, model=None, gpus=None, models="mlp,lstm", repretrain=False, bootstrap=0,
                                 status_every=3600, label_mode="provisional_observed", log_dir=tmp_path))
     assert (tmp_path / "train_mlp.log").exists()
     metrics = pd.read_csv(processed.report / "models/provisional_observed/metrics.csv")

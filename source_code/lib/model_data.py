@@ -41,7 +41,7 @@ def model_parser(description):
 
 def check_build(data_dir):
     if not (Path(data_dir) / "BUILD_COMPLETE.json").exists():
-        raise SystemExit(f"{data_dir}/BUILD_COMPLETE.json missing: run the data steps first (python source_code/run_all.py)")
+        raise SystemExit(f"{data_dir}/BUILD_COMPLETE.json missing: run python source_code/01_build_data.py first")
 
 
 def embedding_len(cfg):
@@ -113,7 +113,6 @@ def encode_sequences(frame, vocab, max_len):
 
 class NodeData:
     """Candidate landmark nodes with sequences, static context and labels (aligned row order)."""
-
     def __init__(self, data_dir, report_dir, label_mode, max_len):
         data_dir = Path(data_dir)
         cols = [ID, "landmark", "split", "sex", "age_years_approx"]
@@ -124,7 +123,7 @@ class NodeData:
         inputs = inputs.with_columns(pl.col("landmark").cast(pl.Datetime("us"))).sort([ID, "landmark"])
         keys = samples[[ID, "landmark"]].astype({"landmark": "datetime64[us]"})
         if not (inputs[ID].to_numpy() == keys[ID].to_numpy()).all() or not (inputs["landmark"].to_numpy() == keys.landmark.to_numpy()).all():
-            raise ValueError("landmark_inputs and landmark_samples rows do not match; rerun steps 05-06")
+            raise ValueError("landmark_inputs and landmark_samples rows do not match; rerun 01_build_data.py --from cohort")
         self.vocab, self.vocab_size = load_vocab(report_dir)
         log(f"Encoding {len(samples):,} node sequences (max_len {max_len})")
         self.tokens, self.days, self.visits = encode_sequences(inputs, self.vocab, max_len)
@@ -179,7 +178,7 @@ def collate(batch):
 
 
 class PretrainData:
-    """Train-split participants' histories before the pretraining cutoff (step 08 output)."""
+    """Train-split participants' histories before the pretraining cutoff (pretrain_corpus stage output)."""
 
     def __init__(self, data_dir, report_dir, cutoff, max_len):
         data_dir = Path(data_dir)
@@ -255,7 +254,7 @@ def require_labels(data):
     if data.label_mode == "verified" and available == 0:
         raise SystemExit(
             "No verified 5-year labels: configs/registry_coverage.json is 'unverified', so label_*_5y are empty.\n"
-            "Verify registry coverage and rebuild (steps 01-09), or run with --label-mode provisional_observed\n"
+            "Verify registry coverage and rebuild (01_build_data.py), or run with --label-mode provisional_observed\n"
             "to debug the training pipeline only (results must not be reported).")
     if data.label_mode == "provisional_observed":
         log("WARNING " + PROVISIONAL_WARNING)

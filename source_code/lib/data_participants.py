@@ -1,33 +1,24 @@
-"""Step 01 · Study base population and fixed patient splits.
+"""Data stage · Study base population and fixed patient splits.
 
 One row per UKB participant: recruitment, sex, birth month, death, loss to follow-up,
 registry coverage, the fixed 70/15/15 train/validation/test split and the internal
-pretraining roles. Landmark eligibility is applied later, in step 05.
-
-Run: python source_code/01_participants.py
+pretraining roles. Landmark eligibility is applied later, in the cohort stage.
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import json
 
 import numpy as np
 import pandas as pd
 
-from .common import ID, ROOT, Context, fmt, log, parser, read
+from .common import ID, ROOT, Context, fmt, log, read
 from .definitions import dates, patient_split
 
-STEP, TITLE = "01", "Study base population and fixed patient splits"
+STAGE, TITLE = "participants", "Study base population and fixed patient splits"
 NEEDS = [("ukb_fields", "UKB_visit_and_followup_dates.csv"), ("ukb_fields", "UKB_death.csv"),
          ("hospital_cancer", "record.csv"), ("hospital_cancer", "cancer.csv")]
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE, NEEDS)
+    ctx = Context(args, STAGE, TITLE, NEEDS)
     log("Reading visit / follow-up dates")
     vis = ctx.visits()
     assert vis.index.is_unique and vis.index.notna().all()
@@ -91,7 +82,3 @@ def run(args):
              "split: " + ", ".join(f"{k} {fmt(split.get(k, 0))}" for k in ["train", "validation", "test"]),
              f"deaths: {fmt(p.death.notna().sum())}; lost to follow-up: {fmt(p.lost.notna().sum())}",
              f"registry coverage: {coverage['status']} ({fmt(p.coverage_verified.sum())} people with verified dates)")
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

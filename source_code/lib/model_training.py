@@ -9,7 +9,7 @@ from torch import nn
 
 from .common import log, progress
 from .model_data import SITE_KEYS
-from .metrics import auroc
+from .model_metrics import auroc
 
 
 def seed_everything(seed):

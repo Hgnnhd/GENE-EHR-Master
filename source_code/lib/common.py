@@ -15,7 +15,9 @@ except ImportError:  # progress bars are optional; plain log lines still show ea
     tqdm = None
 
 ID = "participant_id"
-ROOT = Path(__file__).resolve().parents[1]
+# Data stages in build order (run by source_code/01_build_data.py).
+STAGES = ["participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus", "validate"]
+ROOT = Path(__file__).resolve().parents[2]  # project root (source_code/lib/common.py)
 CHUNK = 10000
 START = time.time()
 
@@ -25,8 +27,6 @@ INPUT_HELP = """Input directories default to configs/cohort.json "data_dirs":
   --hospital-cancer  record.csv (inpatient ICD-10 + birth), cancer.csv (cancer registry),
                      UKB coding dictionary
 """
-
-
 def say(message):
     """Print without breaking an active progress bar."""
     if tqdm is None:
@@ -34,6 +34,10 @@ def say(message):
     else:
         tqdm.write(message, file=sys.stdout)
         sys.stdout.flush()
+
+
+def banner(title):
+    say(f"\n{'=' * 64}\n  {title}\n{'=' * 64}")
 
 
 def log(message):
@@ -75,7 +79,7 @@ def fmt(n):
 
 
 def pipeline_hash():
-    files = sorted(Path(__file__).parent.glob("*.py"))
+    files = sorted(Path(__file__).resolve().parents[1].rglob("*.py"))  # all of source_code
     return hashlib.sha256(b"".join(p.read_bytes() for p in files)).hexdigest()
 
 
@@ -91,14 +95,14 @@ def parser(description):
 
 
 class Context:
-    """State of one pipeline step: paths, config, QC, quarantined records and used sources.
+    """State of one data stage: paths, config, QC, quarantined records and used sources.
 
-    Steps exchange data only through parquet files in `out`, so any step can be rerun
-    once the steps before it have completed.
+    Stages exchange data only through parquet files in `out`, so any stage can be rerun
+    once the stages before it have completed.
     """
 
-    def __init__(self, args, step, title, needs=()):
-        self.step, self.title = step, title
+    def __init__(self, args, stage, title, needs=()):
+        self.stage, self.title = stage, title
         self.config = json.loads(Path(args.config).read_text(encoding="utf-8"))
         dirs = self.config.get("data_dirs", {})
         self.ukb = Path(args.ukb_fields or dirs.get("ukb_fields") or "")
@@ -114,7 +118,7 @@ class Context:
         self.qc, self.quarantines, self.used = {}, [], set()
         self.t0 = time.time()
         (self.out / "BUILD_COMPLETE.json").unlink(missing_ok=True)
-        say(f"\n{'=' * 64}\n  Step {step}  {title}\n{'=' * 64}")
+        banner(f"Data stage {STAGES.index(stage) + 1}/{len(STAGES)} · {stage} · {title}")
 
     def source(self, root, name):
         path = root / name
@@ -130,8 +134,8 @@ class Context:
     def require(self, *names):
         missing = [n for n in names if not (self.out / n).exists()]
         if missing:
-            raise FileNotFoundError(f"Step {self.step} needs earlier outputs {missing} in {self.out}; "
-                                    "run the earlier steps first (python source_code/run_all.py).")
+            raise FileNotFoundError(f"Stage {self.stage} needs earlier outputs {missing} in {self.out}; "
+                                    "run the earlier stages first (python source_code/01_build_data.py).")
 
     def participants(self):
         self.require("participants.parquet")
@@ -144,10 +148,10 @@ class Context:
         return read(self.source(self.ukb, "UKB_visit_and_followup_dates.csv")).set_index(ID)
 
     def done(self, *lines):
-        """Write this step's quarantine and QC, then print a short summary."""
+        """Write this stage's quarantine and QC, then print a short summary."""
         qdir = self.out / "quarantine"
         qdir.mkdir(exist_ok=True)
-        qpath = qdir / f"{self.step}.parquet"
+        qpath = qdir / f"{self.stage}.parquet"
         if self.quarantines:
             q = pd.concat(self.quarantines, ignore_index=True)
             # Heterogeneous raw-source fields are retained in the private QC table.
@@ -157,11 +161,11 @@ class Context:
             qpath.unlink(missing_ok=True)
         summary_path = self.report / "build_summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
-        summary = {k: v for k, v in summary.items() if k.startswith("step_")}  # drop pre-step-layout keys
+        summary = {k: v for k, v in summary.items() if k in STAGES}  # drop keys from older layouts
         self.qc["elapsed_seconds"] = round(time.time() - self.t0, 1)
         self.qc["sources"] = sorted(str(p) for p in self.used)
-        summary[f"step_{self.step}"] = {"title": self.title, **self.qc}
-        dump(dict(sorted(summary.items())), summary_path)
+        summary[self.stage] = {"title": self.title, **self.qc}
+        dump({k: summary[k] for k in STAGES if k in summary}, summary_path)
         for line in lines:
             say(f"  - {line}")
-        log(f"Step {self.step} done in {self.qc['elapsed_seconds']:.0f}s")
+        log(f"Stage {self.stage} done in {self.qc['elapsed_seconds']:.0f}s")

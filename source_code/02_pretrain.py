@@ -1,0 +1,37 @@
+"""Step 2 · Masked-code pretraining of the pretrained transformers (no labels used).
+
+Pretrains BEHRT, Med-BERT and the main ehr_transformer on train-split participants' codes
+before the pretraining cutoff; internal pretraining-validation participants drive early
+stopping. Weights go to data/processed/models/pretrained/<model>/encoder.pt.
+03_train_models.py runs this automatically when weights are missing.
+
+  python source_code/02_pretrain.py --model ehr_transformer --device cuda:0
+  python source_code/02_pretrain.py --model all --device cuda:0      # the three, one after another
+"""
+from pathlib import Path
+
+if not __package__:  # allow `python source_code/02_pretrain.py`
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "source_code"
+
+import argparse
+
+from .lib.model_data import load_config, model_parser
+from .lib.model_pretrain import run as pretrain
+
+
+def run(args):
+    cfg = load_config(args.model_config)
+    pretrained = [k for k, v in cfg["deep_models"].items() if v.get("pretrain")]
+    names = pretrained if args.model == "all" else args.model.split(",")
+    for name in names:
+        if name not in pretrained:
+            raise SystemExit(f"{name} is not a pretrained model; choose from {', '.join(pretrained)}")
+        pretrain(argparse.Namespace(**{**vars(args), "model": name}))
+
+
+if __name__ == "__main__":
+    ap = model_parser(__doc__)
+    ap.add_argument("--model", required=True, help="behrt | medbert | ehr_transformer | all (comma-separated allowed)")
+    run(ap.parse_args())

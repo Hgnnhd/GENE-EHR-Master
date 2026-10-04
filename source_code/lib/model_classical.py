@@ -1,26 +1,17 @@
-"""Step 11 · Classical baselines on bag-of-codes: logistic regression, random forest, LightGBM, XGBoost.
+"""Classical baselines on bag-of-codes: logistic regression, random forest, LightGBM, XGBoost.
 
 Features: presence of each vocabulary code before the landmark plus the shared static
 context (age at landmark, sex, landmark). One model per cancer site; gradient-boosting
 models stop early on the validation split. XGBoost uses the GPU when one is visible.
-
-Run: python source_code/11_classical_baselines.py [--models lightgbm,xgboost] [--label-mode ...]
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import time
 
 import numpy as np
 from scipy import sparse
 
-from .common import log, progress, say
-from .metrics import auroc
-from .model_data import SITE_KEYS, SPECIAL, NodeData, check_build, load_config, model_dir, model_parser, require_labels, write_predictions
+from .common import banner, log, progress
+from .model_metrics import auroc
+from .model_data import SITE_KEYS, SPECIAL, NodeData, check_build, load_config, model_dir, require_labels, write_predictions
 
 
 def design_matrix(data):
@@ -70,7 +61,7 @@ def run(args):
     mode = args.label_mode or cfg["label_mode"]
     names = args.models.split(",") if args.models else list(cfg["classical_models"])
     check_build(args.output)
-    say(f"\n{'=' * 64}\n  Step 11  Classical baselines: {', '.join(names)} (labels: {mode})\n{'=' * 64}")
+    banner(f"Training classical baselines: {', '.join(names)} (labels: {mode})")
     data = NodeData(args.output, args.report, mode, cfg["max_len"])
     require_labels(data)
     log("Building bag-of-codes design matrix")
@@ -109,9 +100,3 @@ def _cuda():
         return torch.cuda.is_available()
     except ImportError:
         return False
-
-
-if __name__ == "__main__":
-    ap = model_parser(__doc__)
-    ap.add_argument("--models", help="comma-separated subset of configs/models.json classical_models")
-    run(ap.parse_args())

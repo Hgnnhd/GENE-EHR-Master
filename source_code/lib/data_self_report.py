@@ -1,25 +1,16 @@
-"""Step 04 · Self-reported cancer history, classified with the local UKB coding dictionary.
+"""Data stage · Self-reported cancer history, classified with the local UKB coding dictionary.
 
 Writes self_report_cancer.parquet (one row per Instance x Array report with its
-assessment date). How reports affect each landmark is decided in step 05.
-
-Run: python source_code/04_self_report.py
+assessment date). How reports affect each landmark is decided in the cohort stage.
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import re
 
 import pandas as pd
 
-from .common import ID, Context, fmt, log, parser, progress, read, save
+from .common import ID, Context, fmt, log, progress, read, save
 from .definitions import dates
 
-STEP, TITLE = "04", "Self-reported cancer history"
+STAGE, TITLE = "self_report", "Self-reported cancer history"
 CODINGS = "app176660_20240512000635.dataset.codings.csv"
 NEEDS = [("ukb_fields", "UKB_self_reported_conditions.csv"), ("ukb_fields", "UKB_visit_and_followup_dates.csv"),
          ("hospital_cancer", CODINGS)]
@@ -28,7 +19,7 @@ AMBIGUOUS = {"1003", "1051", "99999"}
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE, NEEDS)
+    ctx = Context(args, STAGE, TITLE, NEEDS)
     vis = ctx.visits()
     log("Loading data_coding_3 dictionary")
     dictionary = read(ctx.source(ctx.hosp, CODINGS))
@@ -61,7 +52,3 @@ def run(args):
     ctx.qc["self_report"] = counts.to_dict()
     ctx.done(f"reports: {fmt(len(sr))} from {fmt(sr[ID].nunique())} people",
              ", ".join(f"{k} {fmt(v)}" for k, v in counts.items()))
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

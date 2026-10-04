@@ -25,7 +25,6 @@ N_SITES = len(SITE_KEYS)
 
 class Head(nn.Module):
     """Pooled representation + static context -> one logit per site."""
-
     def __init__(self, d, dropout):
         super().__init__()
         self.net = nn.Sequential(nn.Linear(d + N_STATIC, d), nn.GELU(), nn.Dropout(dropout), nn.Linear(d, N_SITES))

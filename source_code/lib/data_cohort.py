@@ -1,27 +1,18 @@
-"""Step 05 · Landmark cohorts: eligibility, follow-up, outcomes and labels.
+"""Data stage · Landmark cohorts: eligibility, follow-up, outcomes and labels.
 
 For each calendar landmark (configs/cohort.json) applies the same exclusion rules in
 order, resolves follow-up within [t0, t0 + horizon) and derives per-site observed
 cases, binary labels and competing-risk event codes. Writes landmark_status (everyone),
 landmark_samples (clinical candidates), cohort_flow.csv, landmark_counts.csv and
 split_summary.csv.
-
-Run: python source_code/05_landmark_cohort.py
 """
-from pathlib import Path
-
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
 import pandas as pd
 import polars as pl
 
-from .common import ID, Context, fmt, log, parser, progress, save
+from .common import ID, Context, fmt, log, progress, save
 from .definitions import SITES, resolve_followup_frame, site_event_code
 
-STEP, TITLE = "05", "Landmark cohorts, follow-up and labels"
+STAGE, TITLE = "cohort", "Landmark cohorts, follow-up and labels"
 
 
 def landmark(p, sr, ev, t0, horizon, flows, counts):
@@ -122,7 +113,7 @@ def split_summary(p, nodes):
 
 
 def run(args):
-    ctx = Context(args, STEP, TITLE)
+    ctx = Context(args, STAGE, TITLE)
     ctx.require("participants.parquet", "events.parquet", "self_report_cancer.parquet")
     p = ctx.participants()
     sr = pd.read_parquet(ctx.out / "self_report_cancer.parquet")
@@ -158,7 +149,3 @@ def run(args):
     ctx.qc["unique_observed_top10_people"] = int(nodes.loc[anytarget, ID].nunique())
     ctx.qc["split_fractions"] = p.split.value_counts(normalize=True).round(4).to_dict()
     ctx.done(*lines, f"unique observed top-10 people across landmarks: {fmt(ctx.qc['unique_observed_top10_people'])}")
-
-
-if __name__ == "__main__":
-    run(parser(__doc__).parse_args())

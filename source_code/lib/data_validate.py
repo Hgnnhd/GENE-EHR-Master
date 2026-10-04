@@ -1,30 +1,22 @@
-"""Step 09 · Validate full-data invariants: chronology, risk sets, labels and patient leakage.
+"""Validate full-data invariants: chronology, risk sets, labels and patient leakage.
 
 Reads the outputs of steps 01-08 and fails on the first violated check.
-
-Run: python source_code/09_validate.py
 """
 from pathlib import Path
 
-if not __package__:  # also allow `python source_code/<step>.py`
-    import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    __package__ = "source_code"
-
-import argparse
 from collections import Counter
 import json
 import re
 
 import polars as pl
 
-from .common import ROOT, log, say
+from .common import ROOT, STAGES, banner, log, say
 from .definitions import SITES
 
 
 def validate(root, config_path=ROOT / "configs/cohort.json"):
     if not (root / "BUILD_COMPLETE.json").exists():
-        raise RuntimeError("Build did not complete: run steps 01-08 (python source_code/run_all.py)")
+        raise RuntimeError("Build did not complete: run python source_code/01_build_data.py")
     checks = []
 
     def check(name, condition):
@@ -92,16 +84,8 @@ def validate(root, config_path=ROOT / "configs/cohort.json"):
     return {"passed": len(checks), "checks": checks, "participants": p.height, "candidate_nodes": s.height, "events": ev.height}
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data", type=Path, default=ROOT / "data/processed")
-    ap.add_argument("--config", type=Path, default=ROOT / "configs/cohort.json")
-    ap.add_argument("--report", type=Path, default=ROOT / "ccfa-workfiles/checks/cancer-cohort/validation.json")
-    run(ap.parse_args())
-
-
 def run(args):
-    print(f"\n{'=' * 64}\n  Step 09  Validate full-data invariants\n{'=' * 64}", flush=True)
+    banner(f"Data stage {len(STAGES)}/{len(STAGES)} · validate · Full-data invariants")
     result = validate(Path(args.data), Path(args.config))
     # Group per-site / per-landmark / per-feature checks under one line each.
     sites = "|".join(s[0] for s in SITES)
@@ -115,7 +99,3 @@ def run(args):
     Path(args.report).write_text(json.dumps(result, indent=2), encoding="utf-8")
     log(f"Passed {result['passed']} full-data checks; {result['candidate_nodes']:,} candidate nodes")
     return result
-
-
-if __name__ == "__main__":
-    main()
