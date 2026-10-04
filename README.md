@@ -6,12 +6,12 @@
 
 ```bash
 python -m pip install -e .
-python -m cancer_ehr.build --ehr "$EHR_SOURCE" --legacy "$LEGACY_EHR_SOURCE"
-python -m cancer_ehr.validate
+python -m source_code.build --ehr "$EHR_SOURCE" --legacy "$LEGACY_EHR_SOURCE"
+python -m source_code.validate
 python -m pytest -q
 ```
 
-也可不安装，以 `PYTHONPATH=src python -m cancer_ehr.build ...` 运行。原始路径通过命令行传入，原始文件保持不变。
+也可不安装，在项目根目录直接以 `python -m source_code.build ...` 运行。原始路径通过命令行传入，原始文件保持不变。
 
 - 配置：[configs/cohort.json](configs/cohort.json)。固定患者划分 70/15/15，seed 42。
 - 私有数据：`data/processed/`，已加入 `.gitignore`。

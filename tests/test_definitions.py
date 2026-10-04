@@ -1,7 +1,7 @@
 import pandas as pd
 import itertools
 
-from cancer_ehr.definitions import classify, patient_split, resolve_followup, resolve_followup_frame, site_event_code
+from source_code.definitions import classify, patient_split, resolve_followup, resolve_followup_frame, site_event_code
 
 D = pd.Timestamp
 T0, END = D("2011-01-01"), D("2016-01-01")

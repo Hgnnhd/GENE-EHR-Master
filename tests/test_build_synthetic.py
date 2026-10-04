@@ -6,8 +6,8 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from cancer_ehr.build import run
-from cancer_ehr.validate import validate
+from source_code.build import run
+from source_code.validate import validate
 
 ID = "Participant ID"
 A0, A2 = "Date of attending assessment centre | Instance 0", "Date of attending assessment centre | Instance 2"

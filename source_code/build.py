@@ -1,6 +1,6 @@
 """Build local research tables without changing source files.
 
-Run: PYTHONPATH=src python -m cancer_ehr.build --ehr ... --legacy ...
+Run: python -m source_code.build --ehr ... --legacy ...
 """
 import argparse
 from collections import Counter
