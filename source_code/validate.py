@@ -5,6 +5,11 @@ from pathlib import Path
 
 import polars as pl
 
+if not __package__:  # also allow `python source_code/<script>.py`
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "source_code"
+
 from .definitions import SITES
 
 

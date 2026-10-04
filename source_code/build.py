@@ -1,6 +1,7 @@
 """Build local research tables without changing source files.
 
-Run: python -m source_code.build --ehr ... --legacy ...
+Run from the project root: python -m source_code.build --ehr ... --legacy ...
+(or python source_code/build.py --ehr ... --legacy ...)
 """
 import argparse
 from collections import Counter
@@ -13,6 +14,11 @@ import time
 import numpy as np
 import pandas as pd
 import polars as pl
+
+if not __package__:  # also allow `python source_code/<script>.py`
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "source_code"
 
 from .definitions import SITES, classify, dates, patient_split, resolve_followup_frame, site_event_code
 
