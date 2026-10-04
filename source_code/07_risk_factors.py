@@ -40,11 +40,15 @@ def run(args):
     vis = ctx.visits()
     nodes = pd.read_parquet(ctx.out / "landmark_samples.parquet", columns=[ID, "landmark"])
     landmarks = [pd.Timestamp(v) for v in ctx.config["landmarks"]]
-    outs = {}
-    for t0 in landmarks:
-        out = pd.DataFrame(index=pd.Index(nodes.loc[nodes.landmark.eq(t0), ID], name=ID))
-        out["landmark"] = t0
-        outs[t0] = out
+    index = {t0: pd.Index(nodes.loc[nodes.landmark.eq(t0), ID], name=ID) for t0 in landmarks}
+    # Columns are collected per landmark and joined once (column-by-column inserts fragment the frame).
+    columns = {t0: {"landmark": pd.Series(t0, index=idx)} for t0, idx in index.items()}
+    visit_dates = {}  # (instance, landmark) -> assessment dates aligned to that landmark's nodes
+
+    def assessed(i, t0):
+        if (i, t0) not in visit_dates:
+            visit_dates[i, t0] = dates(vis[f"Date of attending assessment centre | Instance {i}"]).reindex(index[t0])
+        return visit_dates[i, t0]
     wanted = set(nodes[ID])
     catalog = []
     for fn, bases in SELECTIONS.items():
@@ -59,28 +63,26 @@ def run(args):
         raw = pd.concat(chunks).rename(columns={"Participant ID": ID}).set_index(ID)
         for base in progress(bases, f"{fn} fields", unit="field", leave=False):
             key = re.sub(r"[^a-z0-9]+", "_", base.lower()).strip("_")
-            for t0, out in outs.items():
-                val = pd.Series(pd.NA, index=out.index, dtype="string")
-                when = pd.Series(pd.NaT, index=out.index, dtype="datetime64[ns]")
-                inst = pd.Series(pd.NA, index=out.index, dtype="Int8")
+            for t0, idx in index.items():
+                val = pd.Series(pd.NA, index=idx, dtype="string")
+                when = pd.Series(pd.NaT, index=idx, dtype="datetime64[ns]")
+                inst = pd.Series(pd.NA, index=idx, dtype="Int8")
                 for col in [c for c in chosen if c.split(" | ")[0] == base]:
                     match = re.search(r"Instance (\d+)$", col)
                     i = int(match.group(1)) if match else 0  # recruitment-only Townsend
-                    d = dates(vis[f"Date of attending assessment centre | Instance {i}"]).reindex(out.index)
-                    v = raw[col].reindex(out.index).astype("string")
+                    d = assessed(i, t0)
+                    v = raw[col].reindex(idx).astype("string")
                     missing = v.isna() | v.str.lower().isin(["do not know", "prefer not to answer", "not known"])
                     if base in CODED:
                         missing |= v.isin(["-1", "-3"])
                     use = d.lt(t0) & ~missing & (when.isna() | d.gt(when))
                     val.loc[use], when.loc[use], inst.loc[use] = v.loc[use], d.loc[use], i
-                out[key] = val
-                out[key + "__measured_at"] = when
-                out[key + "__instance"] = inst
-                out[key + "__age_days"] = (t0 - when).dt.days.astype("Int32")
-                out[key + "__missing"] = val.isna()
+                columns[t0].update({key: val, key + "__measured_at": when, key + "__instance": inst,
+                                    key + "__age_days": (t0 - when).dt.days.astype("Int32"),
+                                    key + "__missing": val.isna()})
             catalog.append({"feature": key, "source_file": fn, "source_field": base,
                             "time_basis": "assessment Instance date; assay availability date not exported"})
-    features = pd.concat([out.reset_index() for out in outs.values()], ignore_index=True)
+    features = pd.concat([pd.DataFrame(cols).reset_index() for cols in columns.values()], ignore_index=True)
     save(features, ctx.out / "features_asof.parquet")
     catalog = pd.DataFrame(catalog)
     catalog.to_csv(ctx.report / "feature_catalog.csv", index=False)
