@@ -62,7 +62,7 @@ parts=['# EHR 与十大高死亡负担癌种：样本量及年龄预测点可行
        '优先比较乳腺、前列腺、结直肠和肺癌；其他癌种可作为共享模型的次要终点。宫颈癌招募后首次登记只有 142 人，在 50/60/70 岁五年窗口中分别仅有 18/19/15 例首次恶性肿瘤事件，不宜承诺稳定的独立年龄分层评估。',
        '50/60/70 岁无癌候选者的既往首次医疗代码数中位数分别为 5/6/9，最近一年没有新代码的比例约为 79.8%/78.9%/74.3%。因此应保留较长历史，不宜直接照搬 RAVEN 的一年窗口；这里统计的是首次代码记录，不能解读为这些人一年内没有就诊。',
        '## 复现与结果文件',
-       '`python source/audit.py --ehr <new-ehr-directory> --legacy <legacy-ehr-directory>`\n\n`python source/report.py`',
+       '`python source/audit.py --ukb-fields <UKB字段导出目录> --hospital-cancer <住院诊断与癌症登记目录>`\n\n`python source/report.py`',
        '输出：inventory.csv、additional_source_counts.json、cancer_counts.csv、landmark_history.csv、landmark_cancer_counts.csv、cancer_registry_years.csv、summary.json。计数关系检查通过。']
 (ROOT/'report.md').write_text('\n\n'.join(parts)+'\n',encoding='utf-8')
 print('Aggregate invariants passed; report.md written.')

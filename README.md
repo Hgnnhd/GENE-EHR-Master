@@ -6,12 +6,19 @@
 
 ```bash
 python -m pip install -e .
-python -m source_code.build --ehr "$EHR_SOURCE" --legacy "$LEGACY_EHR_SOURCE"
-python -m source_code.validate
+python source_code/build.py        # 或 python -m source_code.build
+python source_code/validate.py
 python -m pytest -q
 ```
 
-也可不安装，在项目根目录直接以 `python -m source_code.build ...` 运行。原始路径通过命令行传入，原始文件保持不变。
+输入目录默认读取 [configs/cohort.json](configs/cohort.json) 的 `data_dirs`，也可用命令行覆盖；原始文件保持不变。
+
+| 参数 / 配置键 | 默认目录 | 内容 |
+|---|---|---|
+| `--ukb-fields` / `ukb_fields` | `/data15/hd/ehr` | UKB 字段导出：随访日期、死亡、首次发生、自报病史、`Base_Information_split/` |
+| `--hospital-cancer` / `hospital_cancer` | `/data/hd/WB-MRI-main/data/EHR` | `record.csv`（住院 ICD-10、出生）、`cancer.csv`（癌症登记）、UKB 编码字典 |
+
+输出、汇总和配置路径均相对项目根目录，可在任意目录下运行。缺少输入文件时会列出缺失路径后退出。
 
 - 配置：[configs/cohort.json](configs/cohort.json)。固定患者划分 70/15/15，seed 42。
 - 私有数据：`data/processed/`，已加入 `.gitignore`。

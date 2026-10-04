@@ -103,7 +103,7 @@ def built(tmp_path, monkeypatch):
     config.write_text(json.dumps({"landmarks": ["2011-01-01", "2016-01-01"], "horizon_years": 5, "seed": 42,
                                   "pretrain_before": "2016-01-01", "pretrain_internal_validation_fraction": 0.2,
                                   "coverage_manifest": str(manifest)}))
-    args = argparse.Namespace(ehr=ehr, legacy=old, config=config, output=tmp_path / "out", report=tmp_path / "report")
+    args = argparse.Namespace(ukb_fields=ehr, hospital_cancer=old, config=config, output=tmp_path / "out", report=tmp_path / "report")
     run(args)
     return args
 

@@ -13,7 +13,10 @@ if not __package__:  # also allow `python source_code/<script>.py`
 from .definitions import SITES
 
 
-def validate(root, config_path=Path("configs/cohort.json")):
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def validate(root, config_path=ROOT / "configs/cohort.json"):
     if not (root / "BUILD_COMPLETE.json").exists():
         raise RuntimeError("Build did not complete")
     checks = []
@@ -85,9 +88,9 @@ def validate(root, config_path=Path("configs/cohort.json")):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data", type=Path, default=Path("data/processed"))
-    ap.add_argument("--config", type=Path, default=Path("configs/cohort.json"))
-    ap.add_argument("--report", type=Path, default=Path("ccfa-workfiles/checks/cancer-cohort/validation.json"))
+    ap.add_argument("--data", type=Path, default=ROOT / "data/processed")
+    ap.add_argument("--config", type=Path, default=ROOT / "configs/cohort.json")
+    ap.add_argument("--report", type=Path, default=ROOT / "ccfa-workfiles/checks/cancer-cohort/validation.json")
     args = ap.parse_args()
     result = validate(args.data, args.config)
     args.report.write_text(json.dumps(result, indent=2), encoding="utf-8")

@@ -61,6 +61,6 @@
 
 ## 复现
 
-`python source/calendar_audit.py --ehr <ehr-directory> --legacy <legacy-directory>`
+`python source/calendar_audit.py --ukb-fields <UKB字段导出目录> --hospital-cancer <住院诊断与癌症登记目录>`
 
 CSV：calendar_summary.csv、calendar_cancer_counts.csv、calendar_strategy_summary.csv、calendar_strategy_counts.csv。

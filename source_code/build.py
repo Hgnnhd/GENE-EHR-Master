@@ -1,7 +1,12 @@
 """Build local research tables without changing source files.
 
-Run from the project root: python -m source_code.build --ehr ... --legacy ...
-(or python source_code/build.py --ehr ... --legacy ...)
+Run: python source_code/build.py   (or python -m source_code.build)
+
+Input directories default to configs/cohort.json "data_dirs":
+  --ukb-fields       UKB field exports: UKB_visit_and_followup_dates.csv, UKB_death.csv,
+                     UKB_First_occurrences.csv, UKB_self_reported_conditions.csv, Base_Information_split/
+  --hospital-cancer  record.csv (inpatient ICD-10 + birth), cancer.csv (cancer registry),
+                     UKB coding dictionary
 """
 import argparse
 from collections import Counter
@@ -23,6 +28,12 @@ if not __package__:  # also allow `python source_code/<script>.py`
 from .definitions import SITES, classify, dates, patient_split, resolve_followup_frame, site_event_code
 
 ID = "participant_id"
+ROOT = Path(__file__).resolve().parents[1]
+REQUIRED = {
+    "ukb_fields": ["UKB_visit_and_followup_dates.csv", "UKB_death.csv", "UKB_First_occurrences.csv",
+                   "UKB_self_reported_conditions.csv", "Base_Information_split"],
+    "hospital_cancer": ["record.csv", "cancer.csv", "app176660_20240512000635.dataset.codings.csv"],
+}
 START = time.time()
 
 
@@ -46,9 +57,16 @@ def dump(obj, path):
 
 class Builder:
     def __init__(self, args):
-        self.ehr, self.old, self.out = args.ehr, args.legacy, args.output
-        self.report = args.report
         self.config = json.loads(args.config.read_text(encoding="utf-8"))
+        dirs = self.config.get("data_dirs", {})
+        self.ukb = Path(args.ukb_fields or dirs.get("ukb_fields") or "")
+        self.hosp = Path(args.hospital_cancer or dirs.get("hospital_cancer") or "")
+        missing = [str(d / f) for key, d in [("ukb_fields", self.ukb), ("hospital_cancer", self.hosp)]
+                   for f in REQUIRED[key] if not (d / f).exists()]
+        if missing:
+            raise FileNotFoundError("Missing input files (check --ukb-fields / --hospital-cancer or "
+                                    "configs data_dirs):\n  " + "\n  ".join(missing))
+        self.out, self.report = args.output, args.report
         self.out.mkdir(parents=True, exist_ok=True)
         self.report.mkdir(parents=True, exist_ok=True)
         self.qc = {}
@@ -68,13 +86,13 @@ class Builder:
 
     def participants(self):
         log("Building participants and fixed patient splits")
-        self.vis = read(self.source(self.ehr, "UKB_visit_and_followup_dates.csv")).set_index(ID)
+        self.vis = read(self.source(self.ukb, "UKB_visit_and_followup_dates.csv")).set_index(ID)
         assert self.vis.index.is_unique and self.vis.index.notna().all()
         p = pd.DataFrame(index=self.vis.index)
         p["recruited"] = dates(self.vis["Date of attending assessment centre | Instance 0"])
         p["lost"] = dates(self.vis["Date lost to follow-up"])
-        birth = read(self.source(self.old, "record.csv"), usecols=["Participant ID", "Sex", "Date of birth"]).set_index(ID)
-        cancer = read(self.source(self.old, "cancer.csv"), usecols=["Participant ID", "Sex"]).set_index(ID)
+        birth = read(self.source(self.hosp, "record.csv"), usecols=["Participant ID", "Sex", "Date of birth"]).set_index(ID)
+        cancer = read(self.source(self.hosp, "cancer.csv"), usecols=["Participant ID", "Sex"]).set_index(ID)
         assert set(p.index) == set(birth.index) == set(cancer.index)
         assert birth.index.is_unique and cancer.index.is_unique
         p["birth"] = dates(birth["Date of birth"])
@@ -84,7 +102,7 @@ class Builder:
         self.qc["sex_crosswalk"] = pd.crosstab(birth.Sex, p.sex).to_dict()
         assert p.sex.isin(["Female", "Male"]).all()
         assert (p.birth.dt.day == 1).all()
-        dd = read(self.source(self.ehr, "UKB_death.csv"))
+        dd = read(self.source(self.ukb, "UKB_death.csv"))
         dd["date"] = dates(dd["Date of death"])
         invalid = dd["Date of death"].notna() & dd.date.isna()
         self.quarantine(dd.loc[invalid, [ID, "Date of death"]], "invalid_death_date", "death")
@@ -100,12 +118,12 @@ class Builder:
         p.loc[inner[:nval], "pretrain_role"] = "validation"
         p["registry_start"] = pd.NaT
         p["registry_end_exclusive"] = pd.NaT
-        coverage = json.loads(Path(self.config["coverage_manifest"]).read_text(encoding="utf-8"))
+        coverage = json.loads((ROOT / self.config["coverage_manifest"]).read_text(encoding="utf-8"))
         self.coverage = coverage
         if coverage["status"] == "verified":
             if not all(coverage.get(x) for x in ["source_version", "evidence", "coverage_file"]):
                 raise ValueError("Verified coverage requires source_version, evidence and coverage_file")
-            path = Path(coverage["coverage_file"])
+            path = ROOT / coverage["coverage_file"]
             self.used.add(path)
             cov = pd.read_csv(path, dtype=str).set_index(ID)
             assert cov.index.is_unique and set(cov.index).issubset(set(p.index))
@@ -119,7 +137,7 @@ class Builder:
 
     def registry(self):
         log("Pairing cancer registry by Instance")
-        c = read(self.source(self.old, "cancer.csv")).set_index(ID)
+        c = read(self.source(self.hosp, "cancer.csv")).set_index(ID)
         parts = []
         for col in c.filter(regex=r"^Date of cancer diagnosis \| Instance ").columns:
             i = int(col.rsplit(" ", 1)[1])
@@ -150,7 +168,7 @@ class Builder:
     def histories(self):
         log("Extracting first-occurrence histories and quarantining invalid dates")
         parts, bad_values = [], Counter()
-        fpath = self.source(self.ehr, "UKB_First_occurrences.csv")
+        fpath = self.source(self.ukb, "UKB_First_occurrences.csv")
         for chunk in pd.read_csv(fpath, dtype=str, chunksize=10000):
             z = chunk.set_index("Participant ID").stack().rename("raw_date").reset_index()
             z.columns = [ID, "field", "raw_date"]
@@ -165,7 +183,7 @@ class Builder:
         del parts
         log("Pairing hospital arrays; quarantining entire mismatched rows")
         parts, mismatches, undated_malignant = [], set(), set()
-        for chunk in pd.read_csv(self.source(self.old, "record.csv"), dtype=str, chunksize=10000):
+        for chunk in pd.read_csv(self.source(self.hosp, "record.csv"), dtype=str, chunksize=10000):
             chunk = chunk.set_index("Participant ID")
             cs = chunk["Diagnoses - ICD10"].str.split("|", regex=False)
             ds = chunk.filter(regex=r"^Date of first in-patient diagnosis - ICD10 \| Array ")
@@ -220,14 +238,14 @@ class Builder:
 
     def self_reports(self):
         log("Classifying self-reported cancer history using local UKB coding dictionary")
-        dictionary = read(self.source(self.old, "app176660_20240512000635.dataset.codings.csv"))
+        dictionary = read(self.source(self.hosp, "app176660_20240512000635.dataset.codings.csv"))
         coding = dictionary.loc[dictionary.coding_name.eq("data_coding_3")].set_index("code").meaning.to_dict()
         excluded = {"1060", "1061", "1062", "1073", "1072"}
         ambiguous = {"1003", "1051", "99999"}
         known = set(coding.values())
         excluded_text = {coding[k] for k in excluded}
         ambiguous_text = {coding[k] for k in ambiguous}
-        path = self.source(self.ehr, "UKB_self_reported_conditions.csv")
+        path = self.source(self.ukb, "UKB_self_reported_conditions.csv")
         sr = read(path, usecols=lambda c: c == "Participant ID" or "cancer first diagnosed" in c and "non-cancer" not in c or c.startswith("Cancer code," )).set_index(ID)
         parts = []
         for col in sr.filter(regex="^Cancer code,").columns:
@@ -403,7 +421,7 @@ class Builder:
             out = pd.DataFrame(index=pd.Index(ids, name=ID))
             out["landmark"] = t0
             for fn, bases in selections.items():
-                path = self.source(self.ehr / "Base_Information_split", fn)
+                path = self.source(self.ukb / "Base_Information_split", fn)
                 cols = pd.read_csv(path, nrows=0).columns
                 if bases is None:
                     bases = sorted({c.split(" | ")[0] for c in cols if " | Instance " in c and "urine" not in c.lower()})
@@ -466,19 +484,19 @@ class Builder:
         dump(self.qc, self.report / "build_summary.json")
         inventory = [{"file": p.name, "bytes": p.stat().st_size, "mtime_ns": p.stat().st_mtime_ns} for p in sorted(self.used)]
         code_hash = hashlib.sha256(Path(__file__).read_bytes() + Path(__file__).with_name("definitions.py").read_bytes()).hexdigest()
-        dump({"config": self.config, "coverage": self.coverage, "sources": inventory, "pipeline_sha256": code_hash,
+        dump({"config": self.config, "input_dirs": {"ukb_fields": str(self.ukb), "hospital_cancer": str(self.hosp)}, "coverage": self.coverage, "sources": inventory, "pipeline_sha256": code_hash,
               "source_fingerprints": "size and mtime, not cryptographic raw-file hashes"}, self.report / "build_manifest.json")
         (self.out / "BUILD_COMPLETE.json").write_text(json.dumps({"pipeline_sha256": code_hash, "coverage_status": self.coverage["status"]}), encoding="utf-8")
         log("Research tables complete; aggregate summary written")
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ehr", type=Path, required=True)
-    ap.add_argument("--legacy", type=Path, required=True)
-    ap.add_argument("--config", type=Path, default=Path("configs/cohort.json"))
-    ap.add_argument("--output", type=Path, default=Path("data/processed"))
-    ap.add_argument("--report", type=Path, default=Path("ccfa-workfiles/checks/cancer-cohort"))
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--ukb-fields", type=Path, help="UKB field-export directory (default: config data_dirs.ukb_fields)")
+    ap.add_argument("--hospital-cancer", type=Path, help="record.csv/cancer.csv directory (default: config data_dirs.hospital_cancer)")
+    ap.add_argument("--config", type=Path, default=ROOT / "configs/cohort.json")
+    ap.add_argument("--output", type=Path, default=ROOT / "data/processed")
+    ap.add_argument("--report", type=Path, default=ROOT / "ccfa-workfiles/checks/cancer-cohort")
     run(ap.parse_args())
 
 

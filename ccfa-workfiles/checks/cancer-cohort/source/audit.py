@@ -10,10 +10,10 @@ import polars as pl
 
 ROOT = Path(__file__).resolve().parents[1]
 P = argparse.ArgumentParser()
-P.add_argument('--ehr', type=Path, required=True)
-P.add_argument('--legacy', type=Path, required=True)
+P.add_argument('--ukb-fields', type=Path, required=True)
+P.add_argument('--hospital-cancer', type=Path, required=True)
 ARGS = P.parse_args()
-EHR, OLD = ARGS.ehr, ARGS.legacy
+EHR, OLD = ARGS.ukb_fields, ARGS.hospital_cancer
 START = time.time()
 RESULT = {}
 

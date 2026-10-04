@@ -9,9 +9,9 @@ for node in ast.parse((ROOT/'source/audit.py').read_text(encoding='utf-8')).body
         exec(compile(ast.Module(body=[node],type_ignores=[]),'audit.py','exec'),ns)
 SITES=ns['SITES'];classify=ns['classify']
 parser=argparse.ArgumentParser()
-parser.add_argument('--ehr',type=Path,required=True)
-parser.add_argument('--legacy',type=Path,required=True)
-args=parser.parse_args();E=args.ehr;L=args.legacy
+parser.add_argument('--ukb-fields',type=Path,required=True)
+parser.add_argument('--hospital-cancer',type=Path,required=True)
+args=parser.parse_args();E=args.ukb_fields;L=args.hospital_cancer
 def dates(s):return pd.to_datetime(s,format='mixed',errors='coerce')
 c=pd.read_csv(L/'cancer.csv',dtype=str).set_index('Participant ID')
 v=pd.read_csv(E/'UKB_visit_and_followup_dates.csv',dtype=str).set_index('Participant ID')
