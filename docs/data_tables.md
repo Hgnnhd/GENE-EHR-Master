@@ -9,7 +9,8 @@
 | cancer_events | 原始癌症登记 Instance | 保留原始日期和两套编码、派生癌种与质控状态 |
 | self_report_cancer | 自报癌症 Instance × Array | 原始编码/名称、诊断年龄/年份、评估日期、编码类别 |
 | landmark_status | 参与者 × 预测点 | 包括所有排除者的互斥首个排除原因 |
-| landmark_samples | 通过临床筛查者 × 预测点 | 候选资格、登记覆盖、结局状态、逐癌种标签和病史数量 |
+| landmark_samples | 通过临床筛查者 × 预测点 | 候选资格、登记覆盖、结局状态、逐癌种标签、竞争风险事件码和病史数量 |
+| landmark_inputs | 通过临床筛查者 × 预测点 | EHR-only 输入序列：预测点前的首次医疗代码、日期、距预测点天数、同日事件组序号和来源 |
 | features_asof | 候选者 × 预测点 | 最近一次预测点前的风险因素；各字段带时间、Instance、缺失标志 |
 | pretrain_participants | 训练参与者 | 内部预训练训练/验证角色，含无记录者 |
 | pretrain_events | 训练参与者 × 首次医疗代码 | 日期 < 2016-01-01，带预训练角色 |
@@ -22,6 +23,16 @@
 `followup_status` 取值包括 `coverage_unverified`、`not_observable_at_landmark`、`cancer`、`death`、`censored`、`event_free_5y`、`event_loss_tie_unresolved`、`ineligible`。删失和未核验记录的五年标签为空。死亡和其他癌症保留独立事件类型；对某癌种的五年累积发生指示为 0，不作为普通失访删失。生存模型须同时读取事件类型和观察时间。
 
 覆盖日期统一为 `[registry_start, registry_end_exclusive)`。目标窗口为 `[t0,t0+5年)`；输入为 `<t0`。癌症和死亡同日视为该日癌症事件并保留同日标志；癌症/死亡与失访同日则结局待核验。多癌种同日首发保存为 `first_cancer_sites` 的完整集合，允许多个目标阳性。
+
+`event_{site}` 与 `followup_days` 配对用于生存/竞争风险模型：0 为删失或五年无事件，1 为该癌种是首次恶性肿瘤，2 为竞争事件（死亡或其他首次恶性肿瘤）；未核实覆盖、不可观察、临床排除或性别不适用时为空。`label_{site}_5y` 为 1 当且仅当 `event_{site}` 为 1；删失者有事件码 0 但二分类标签为空。
+
+`first_cancer_sites` 中 C76–C80（ICD-9 195–199）记为 `secondary_or_unknown_primary`，其他非目标恶性肿瘤记为 `other`；二者都是竞争事件，不归入任何目标癌种。
+
+`later_self_report_prior_cancer` 是敏感性分析标志：预测点当日或之后采集的自报恶性肿瘤，其插值诊断年份早于预测点。按协议它不参与该节点的排除。
+
+`landmark_inputs` 的 `codes`、`dates`、`days_before`、`day_index`、`sources` 为等长列表，按日期、代码排序；`day_index` 相同表示同日事件集合，不代表同日先后。无历史者为空列表，`n_codes=0`，与 `landmark_samples.history_codes` 一致。词表映射在模型阶段使用 `vocabulary.csv`（仅由预训练训练组生成）。
+
+`split_summary.csv`（汇总目录）报告各划分组的人数、女性比例、年龄四分位数、死亡/失访/登记恶性肿瘤比例，以及各预测点候选者在各组中的分布，用于检查固定划分的均衡性；不含参与者 ID。
 
 `observed_*_5y` 只描述满足候选规则、窗口内已见的登记首癌；它没有证明对照者被完整随访，不可直接替换 `label_*_5y`。
 

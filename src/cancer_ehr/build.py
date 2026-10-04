@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from .definitions import SITES, classify, dates, patient_split, resolve_followup
+from .definitions import SITES, classify, dates, patient_split, resolve_followup_frame, site_event_code
 
 ID = "participant_id"
 START = time.time()
@@ -257,6 +257,11 @@ class Builder:
             z["ambiguous_self_report"] = z.index.isin(known_sr.loc[known_sr.classification.eq("ambiguous"), ID])
             unknown_sr = self.sr.loc[self.sr.assessment_date.isna() & self.sr.classification.ne("excluded_c44_or_precancer"), ID]
             z["undated_self_report"] = z.index.isin(unknown_sr)
+            # Sensitivity flag only: reports collected at/after t0 that date a malignancy before t0.
+            later = self.sr.loc[self.sr.assessment_date.ge(t0) & self.sr.classification.eq("malignant_history")]
+            year = pd.to_numeric(later.reported_year, errors="coerce")
+            before = year.gt(0) & year.lt(t0.year + (t0.dayofyear - 1) / 365.25)
+            z["later_self_report_prior_cancer"] = z.index.isin(later.loc[before, ID])
             rules = [
                 ("not_recruited", z.recruited.isna() | z.recruited.ge(t0)),
                 ("dead_at_landmark", z.death.le(t0)),
@@ -283,12 +288,10 @@ class Builder:
             z["history_start"] = hist.history_start
             z["empty_history"] = z.history_codes.eq(0)
             z["age_years_approx"] = (t0 - z.birth).dt.days / 365.25
-            z["followup_status"] = "ineligible"
-            z["observation_end"] = pd.NaT
-            z.loc[remaining & ~z.coverage_verified, "followup_status"] = "coverage_unverified"
-            for idx, row in z.loc[remaining & z.coverage_verified].iterrows():
-                status, stop = resolve_followup(t0, end, row.first_registry_cancer, row.death, row.lost, row.registry_start, row.registry_end_exclusive)
-                z.loc[idx, ["followup_status", "observation_end"]] = [status, stop]
+            status, stop = resolve_followup_frame(t0, end, z.first_registry_cancer, z.death, z.lost,
+                                                  z.registry_start, z.registry_end_exclusive)
+            z["followup_status"] = status.where(remaining, "ineligible")
+            z["observation_end"] = stop.where(remaining)
             z["followup_days"] = (z.observation_end - t0).dt.days.astype("Int64")
             # Descriptive known diagnoses, not training labels while coverage is unresolved.
             observed = remaining & z.first_registry_cancer.ge(t0) & z.first_registry_cancer.lt(end)
@@ -305,6 +308,8 @@ class Builder:
                 label.loc[evaluable] = 0
                 label.loc[evaluable & z.followup_status.eq("cancer") & member] = 1
                 z[f"label_{site}_5y"] = label
+                # Survival/competing-risk target: pair with followup_days.
+                z[f"event_{site}"] = site_event_code(z.followup_status.where(z.eligible, "ineligible"), member, applicable)
                 for split in ["all", "train", "validation", "test"]:
                     sm = pd.Series(True, index=z.index) if split == "all" else z.split.eq(split)
                     counts.append({"landmark": value, "site": site, "name": name, "split": split,
@@ -329,6 +334,51 @@ class Builder:
                 "followup_status": g.followup_status.value_counts().to_dict()}
         anytarget = nodes[[f"observed_{s[0]}_5y" for s in SITES]].any(axis=1)
         self.qc["unique_observed_top10_people"] = int(nodes.loc[anytarget, ID].nunique())
+
+    def split_summary(self):
+        log("Summarizing patient-split balance (aggregate only)")
+        p = self.p
+        age = (p.recruited - p.birth).dt.days / 365.25
+
+        def describe(g, ages):
+            return {"people": len(g), "female_share": g.sex.eq("Female").mean(),
+                    "age_q1": ages.quantile(.25), "age_median": ages.median(), "age_q3": ages.quantile(.75)}
+
+        rows = []
+        for split, g in p.groupby("split"):
+            rows.append({"landmark": "all_participants", "split": split, **describe(g, age.loc[g.index]),
+                         "share": len(g) / len(p), "died": g.death.notna().mean(), "lost": g.lost.notna().mean(),
+                         "registry_malignancy_ever": g.first_registry_cancer.notna().mean()})
+        cand = self.nodes.loc[self.nodes.clinical_candidate]
+        target = cand[[f"observed_{s[0]}_5y" for s in SITES]].any(axis=1)
+        for (landmark, split), g in cand.groupby(["landmark", "split"]):
+            rows.append({"landmark": str(landmark.date()), "split": split, **describe(g, g.age_years_approx),
+                         "share": len(g) / int(cand.landmark.eq(landmark).sum()),
+                         "empty_history": g.empty_history.mean(), "history_codes_median": g.history_codes.median(),
+                         "observed_top10_share": target.loc[g.index].mean()})
+        out = pd.DataFrame(rows).round(4)
+        out.to_csv(self.report / "split_summary.csv", index=False)
+        self.qc["split_fractions"] = p.split.value_counts(normalize=True).round(4).to_dict()
+
+    def inputs(self):
+        log("Materializing pre-landmark code sequences for clinical candidates")
+        us = pl.Datetime("us")
+        nodes = pl.from_pandas(self.nodes.loc[self.nodes.clinical_candidate, [ID, "landmark", "split"]]).with_columns(pl.col("landmark").cast(us))
+        ev = self.ev.select(ID, "code", pl.col("date").cast(us), "source")
+        x = nodes.join(ev, on=ID, how="inner").filter(pl.col("date") < pl.col("landmark"))
+        x = x.sort([ID, "landmark", "date", "code"]).with_columns(
+            (pl.col("landmark") - pl.col("date")).dt.total_days().alias("days_before"),
+            (pl.col("date").rank("dense").over([ID, "landmark"]) - 1).cast(pl.Int32).alias("day_index"))
+        seq = x.group_by([ID, "landmark"], maintain_order=True).agg(
+            pl.col("code").alias("codes"), pl.col("date").alias("dates"), "days_before", "day_index",
+            pl.col("source").alias("sources"))
+        seq = nodes.join(seq, on=[ID, "landmark"], how="left")
+        seq = seq.with_columns([pl.col(c).fill_null(pl.lit([], dtype=seq.schema[c])) for c in ["codes", "dates", "days_before", "day_index", "sources"]])
+        seq = seq.with_columns(pl.col("codes").list.len().alias("n_codes"),
+                               (pl.col("day_index").list.max().fill_null(-1) + 1).alias("n_days"))
+        seq.sort([ID, "landmark"]).write_parquet(self.out / "landmark_inputs.parquet", compression="zstd")
+        self.qc["landmark_inputs"] = {"rows": seq.height, "codes": int(seq["n_codes"].sum()),
+                                      "empty_history": int((seq["n_codes"] == 0).sum())}
 
     def features(self):
         log("Extracting latest pre-landmark risk factors with assessment Instance and feature age")
@@ -423,7 +473,10 @@ def main():
     ap.add_argument("--config", type=Path, default=Path("configs/cohort.json"))
     ap.add_argument("--output", type=Path, default=Path("data/processed"))
     ap.add_argument("--report", type=Path, default=Path("ccfa-workfiles/checks/cancer-cohort"))
-    args = ap.parse_args()
+    run(ap.parse_args())
+
+
+def run(args):
     b = Builder(args)
     (b.out / "BUILD_COMPLETE.json").unlink(missing_ok=True)
     b.participants()
@@ -431,9 +484,12 @@ def main():
     b.histories()
     b.self_reports()
     b.landmarks()
+    b.split_summary()
+    b.inputs()
     b.features()
     b.pretraining()
     b.finish()
+    return b
 
 
 if __name__ == "__main__":

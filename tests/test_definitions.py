@@ -1,5 +1,7 @@
 import pandas as pd
-from cancer_ehr.definitions import classify, patient_split, resolve_followup
+import itertools
+
+from cancer_ehr.definitions import classify, patient_split, resolve_followup, resolve_followup_frame, site_event_code
 
 D = pd.Timestamp
 T0, END = D("2011-01-01"), D("2016-01-01")
@@ -39,7 +41,7 @@ def test_registry_fallback_and_sex_rules():
     c9 = pd.Series([None, None, None, None, "1749 breast", "162 lung", None, None])
     sex = pd.Series(["Female", "Female", "Female", "Male", "Female", "Male", "Male", "Male"])
     site, malignancy, fallback = classify(c10, c9, sex)
-    assert site.tolist() == ["", "", "breast", "", "breast", "", "", "colorectal"]
+    assert site.tolist() == ["", "", "breast", "", "breast", "", "secondary_or_unknown_primary", "colorectal"]
     assert malignancy.tolist() == [False, False, True, True, True, False, True, True]
     assert fallback.sum() == 1
 
@@ -49,3 +51,22 @@ def test_splits_are_stable_across_input_order():
     a, b = patient_split(ids), patient_split(ids[::-1])
     pd.testing.assert_series_equal(a, b)
     assert a.value_counts().to_dict() == {"train": 70, "validation": 15, "test": 15}
+
+
+def test_vectorized_followup_matches_scalar():
+    days = [pd.NaT, D("2010-06-01"), T0, D("2012-01-01"), D("2014-01-01"), END, D("2017-01-01")]
+    starts, stops = [pd.NaT, D("2000-01-01"), D("2012-01-01")], [pd.NaT, D("2014-01-01"), D("2021-01-01"), T0]
+    grid = pd.DataFrame(list(itertools.product(days, days, days, starts, stops)),
+                        columns=["cancer", "death", "lost", "start", "stop"]).apply(pd.to_datetime)
+    status, stop = resolve_followup_frame(T0, END, grid.cancer, grid.death, grid.lost, grid.start, grid.stop)
+    for i, row in grid.iterrows():
+        expected = resolve_followup(T0, END, row.cancer, row.death, row.lost, row.start, row.stop)
+        got = (status[i], stop[i])
+        assert got[0] == expected[0] and (got[1] == expected[1] or (pd.isna(got[1]) and pd.isna(expected[1]))), (row.to_dict(), got, expected)
+
+
+def test_competing_risk_site_codes():
+    status = pd.Series(["cancer", "cancer", "death", "censored", "event_free_5y", "coverage_unverified", "cancer"])
+    member = pd.Series([True, False, False, False, False, True, True])
+    applicable = pd.Series([True] * 6 + [False])
+    assert site_event_code(status, member, applicable).tolist() == [1, 2, 2, 0, 0, pd.NA, pd.NA]

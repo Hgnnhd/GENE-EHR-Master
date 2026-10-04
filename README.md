@@ -26,4 +26,6 @@ python -m pytest -q
 
 增强特征保存原始值、评估 Instance、测量日期、距预测点天数和缺失标志。化验时间采用评估日期，当前导出没有结果发布时刻；这是回顾性测量特征，不能声称能复原当天临床可获取的化验结果。
 
+`landmark_inputs` 是 EHR-only 模型输入序列，与 `landmark_samples` 一一对应；`event_{site}` 与 `followup_days` 给出竞争风险事件码。各划分组的均衡性见汇总目录 `split_summary.csv`。`python -m pytest` 包含一个合成数据的端到端构建与校验测试。
+
 字段与质控规则见 [数据表说明](docs/data_tables.md)。
