@@ -6,10 +6,31 @@
 
 ```bash
 python -m pip install -e .
-python source_code/build.py        # 或 python -m source_code.build
-python source_code/validate.py
+python source_code/run_all.py                # 依次运行 01–09
+python source_code/run_all.py --from 05      # 从第 05 步起重跑
+python source_code/05_landmark_cohort.py     # 单独运行某一步
 python -m pytest -q
 ```
+
+## 流程步骤（`source_code/`）
+
+| 步骤 | 文件 | 作用 | 主要输出（`data/processed/`） |
+|---|---|---|---|
+| 01 | `01_participants.py` | 研究母体：招募、性别、出生月、死亡/失访、登记覆盖；固定 70/15/15 划分及预训练角色 | `participants` |
+| 02 | `02_cancer_registry.py` | 癌症登记按 Instance 配对日期与编码，派生首次恶性肿瘤日期与癌种集合 | `cancer_events` |
+| 03 | `03_medical_history.py` | 首次发生 + 住院诊断 → 每人每个 ICD-10 三级码的最早可靠日期；住院既往癌 | `events` |
+| 04 | `04_self_report.py` | 自报癌症病史分类（本地 UKB 编码字典） | `self_report_cancer` |
+| 05 | `05_landmark_cohort.py` | **人群定义**：各预测点逐条排除、随访与竞争事件、逐癌种标签 | `landmark_status`、`landmark_samples` |
+| 06 | `06_model_inputs.py` | EHR-only 模型输入序列 | `landmark_inputs` |
+| 07 | `07_risk_factors.py` | 增强版本：预测点前最近一次风险因素 | `features_asof` |
+| 08 | `08_pretraining.py` | 预训练数据与词表；写构建清单和 `BUILD_COMPLETE.json` | `pretrain_events`、`pretrain_participants` |
+| 09 | `09_validate.py` | 全量数据一致性校验 | `validation.json`（汇总目录） |
+
+公共代码：`common.py`（路径、读写、进度条、步骤上下文）、`definitions.py`（癌种、划分、随访与事件定义）。
+
+人群定义需要先有登记、住院和自报的既往癌症信息，所以放在第 05 步；第 01 步只建立研究母体和固定划分（先划分参与者，再生成预测点样本）。各步之间只通过 `data/processed/` 下的 parquet 文件传递数据，因此可单独重跑；改动某一步后需重跑它及之后的步骤（`run_all.py --from NN`），任一步开始时都会删除 `BUILD_COMPLETE.json`，直到第 08 步重新写入。
+
+每一步会打印标题、各阶段日志（带累计用时）、大文件读取和逐预测点/逐癌种的进度条，结束时打印关键计数；第 05 步打印每个预测点的逐条排除流程。输出重定向到文件时（如 `nohup ... > build.log`），进度条约每分钟刷新一次。每步的质控计数写入汇总目录 `build_summary.json` 的 `step_NN` 下，隔离记录写入 `data/processed/quarantine/NN.parquet`。
 
 输入目录默认读取 [configs/cohort.json](configs/cohort.json) 的 `data_dirs`，也可用命令行覆盖；原始文件保持不变。
 
@@ -23,7 +44,7 @@ python -m pytest -q
 - 配置：[configs/cohort.json](configs/cohort.json)。固定患者划分 70/15/15，seed 42。
 - 私有数据：`data/processed/`，已加入 `.gitignore`。
 - 汇总、病例流程及质控：`ccfa-workfiles/checks/cancer-cohort/`。
-- 重新构建覆盖当前派生表；只有 `BUILD_COMPLETE.json` 存在才表示整个构建完成。
+- 重新构建会覆盖当前派生表；只有 `BUILD_COMPLETE.json` 存在才表示整个构建完成。
 
 `landmark_samples` 保存通过临床病史筛查的候选节点。是否已核实可入组见 `eligible`；能否用于监督学习见 `followup_status` 和 `label_*`。`observed_*` 是登记中已看到的病例统计，不能作为完整二分类训练标签。
 

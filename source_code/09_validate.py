@@ -1,24 +1,30 @@
-"""Full-data invariants: chronology, risk sets, labels, and patient leakage."""
-import argparse
-import json
+"""Step 09 · Validate full-data invariants: chronology, risk sets, labels and patient leakage.
+
+Reads the outputs of steps 01-08 and fails on the first violated check.
+
+Run: python source_code/09_validate.py
+"""
 from pathlib import Path
 
-import polars as pl
-
-if not __package__:  # also allow `python source_code/<script>.py`
+if not __package__:  # also allow `python source_code/<step>.py`
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "source_code"
 
+import argparse
+from collections import Counter
+import json
+import re
+
+import polars as pl
+
+from .common import ROOT, log, say
 from .definitions import SITES
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def validate(root, config_path=ROOT / "configs/cohort.json"):
     if not (root / "BUILD_COMPLETE.json").exists():
-        raise RuntimeError("Build did not complete")
+        raise RuntimeError("Build did not complete: run steps 01-08 (python source_code/run_all.py)")
     checks = []
 
     def check(name, condition):
@@ -91,10 +97,24 @@ def main():
     ap.add_argument("--data", type=Path, default=ROOT / "data/processed")
     ap.add_argument("--config", type=Path, default=ROOT / "configs/cohort.json")
     ap.add_argument("--report", type=Path, default=ROOT / "ccfa-workfiles/checks/cancer-cohort/validation.json")
-    args = ap.parse_args()
-    result = validate(args.data, args.config)
-    args.report.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"Passed {result['passed']} full-data checks; {result['candidate_nodes']:,} candidate nodes")
+    run(ap.parse_args())
+
+
+def run(args):
+    print(f"\n{'=' * 64}\n  Step 09  Validate full-data invariants\n{'=' * 64}", flush=True)
+    result = validate(Path(args.data), Path(args.config))
+    # Group per-site / per-landmark / per-feature checks under one line each.
+    sites = "|".join(s[0] for s in SITES)
+    groups = Counter()
+    for name in result["checks"]:
+        base = re.sub(rf"_({sites}|\d{{4}}-\d{{2}}-\d{{2}})$", "", name)
+        base = re.sub(r"^(feature_(before_landmark|missing_consistency|date_present))_.*", r"\1", base)
+        groups[base] += 1
+    for base, n in groups.items():
+        say(f"  ok  {base}" + (f"  (x{n})" if n > 1 else ""))
+    Path(args.report).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    log(f"Passed {result['passed']} full-data checks; {result['candidate_nodes']:,} candidate nodes")
+    return result
 
 
 if __name__ == "__main__":

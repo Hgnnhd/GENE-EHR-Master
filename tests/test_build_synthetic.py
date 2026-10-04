@@ -1,13 +1,19 @@
-"""End-to-end build + validate on a tiny synthetic UKB-shaped export."""
+"""End-to-end numbered pipeline (steps 01-09) on a tiny synthetic UKB-shaped export."""
 import argparse
+import importlib
 import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pandas as pd
 import polars as pl
 import pytest
 
-from source_code.build import run
-from source_code.validate import validate
+from source_code import run_all
+
+validate = importlib.import_module("source_code.09_validate").validate
+ROOT = Path(__file__).resolve().parents[1]
 
 ID = "Participant ID"
 A0, A2 = "Date of attending assessment centre | Instance 0", "Date of attending assessment centre | Instance 2"
@@ -103,8 +109,9 @@ def built(tmp_path, monkeypatch):
     config.write_text(json.dumps({"landmarks": ["2011-01-01", "2016-01-01"], "horizon_years": 5, "seed": 42,
                                   "pretrain_before": "2016-01-01", "pretrain_internal_validation_fraction": 0.2,
                                   "coverage_manifest": str(manifest)}))
-    args = argparse.Namespace(ukb_fields=ehr, hospital_cancer=old, config=config, output=tmp_path / "out", report=tmp_path / "report")
-    run(args)
+    args = argparse.Namespace(ukb_fields=ehr, hospital_cancer=old, config=config, output=tmp_path / "out",
+                              report=tmp_path / "report", start=None, stop=None, only=None)
+    run_all.run(args)
     return args
 
 
@@ -156,3 +163,26 @@ def test_synthetic_inputs_and_validation(built):
     assert result["passed"] > 50
     summary = pd.read_csv(built.report / "split_summary.csv")
     assert set(summary.split) <= {"train", "validation", "test"} and "participant_id" not in summary.columns
+
+
+def test_rerun_from_middle_step(built):
+    status = pd.read_parquet(built.output / "landmark_status.parquet")
+    built.start = "05"
+    run_all.run(built)
+    pd.testing.assert_frame_equal(status, pd.read_parquet(built.output / "landmark_status.parquet"))
+    summary = json.loads((built.report / "build_summary.json").read_text())
+    assert sorted(summary) == [f"step_{k}" for k in ["01", "02", "03", "04", "05", "06", "07", "08"]]
+    assert (built.output / "BUILD_COMPLETE.json").exists()
+
+
+def test_single_step_invalidates_build(built):
+    importlib.import_module("source_code.06_model_inputs").run(built)
+    assert not (built.output / "BUILD_COMPLETE.json").exists()
+    with pytest.raises(RuntimeError):
+        validate(built.output, built.config)
+
+
+@pytest.mark.parametrize("script", ["01_participants.py", "05_landmark_cohort.py", "09_validate.py", "run_all.py"])
+def test_steps_run_as_scripts(script):
+    out = subprocess.run([sys.executable, str(ROOT / "source_code" / script), "--help"], capture_output=True, text=True, cwd="/")
+    assert out.returncode == 0, out.stderr
