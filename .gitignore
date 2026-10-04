@@ -1,0 +1,9 @@
+data/
+*.parquet
+*.arrow
+__pycache__/
+.pytest_cache/
+*.egg-info/
+configs/*.local.json
+checkpoints/
+*.log

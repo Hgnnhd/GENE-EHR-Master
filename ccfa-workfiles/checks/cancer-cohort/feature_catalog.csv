@@ -1,0 +1,67 @@
+feature,source_file,source_field,time_basis
+ethnic_background,01_demographics_socioeconomic.csv,Ethnic background,assessment Instance date; assay availability date not exported
+townsend_deprivation_index_at_recruitment,01_demographics_socioeconomic.csv,Townsend deprivation index at recruitment,assessment Instance date; assay availability date not exported
+smoking_status,02_lifestyle.csv,Smoking status,assessment Instance date; assay availability date not exported
+alcohol_intake_frequency,02_lifestyle.csv,Alcohol intake frequency.,assessment Instance date; assay availability date not exported
+body_mass_index_bmi,04_anthropometry_physical_cardiovascular.csv,Body mass index (BMI),assessment Instance date; assay availability date not exported
+alanine_aminotransferase,05_blood_urine_biochemistry.csv,Alanine aminotransferase,assessment Instance date; assay availability date not exported
+albumin,05_blood_urine_biochemistry.csv,Albumin,assessment Instance date; assay availability date not exported
+alkaline_phosphatase,05_blood_urine_biochemistry.csv,Alkaline phosphatase,assessment Instance date; assay availability date not exported
+apolipoprotein_a,05_blood_urine_biochemistry.csv,Apolipoprotein A,assessment Instance date; assay availability date not exported
+apolipoprotein_b,05_blood_urine_biochemistry.csv,Apolipoprotein B,assessment Instance date; assay availability date not exported
+aspartate_aminotransferase,05_blood_urine_biochemistry.csv,Aspartate aminotransferase,assessment Instance date; assay availability date not exported
+c_reactive_protein,05_blood_urine_biochemistry.csv,C-reactive protein,assessment Instance date; assay availability date not exported
+calcium,05_blood_urine_biochemistry.csv,Calcium,assessment Instance date; assay availability date not exported
+cholesterol,05_blood_urine_biochemistry.csv,Cholesterol,assessment Instance date; assay availability date not exported
+creatinine,05_blood_urine_biochemistry.csv,Creatinine,assessment Instance date; assay availability date not exported
+cystatin_c,05_blood_urine_biochemistry.csv,Cystatin C,assessment Instance date; assay availability date not exported
+direct_bilirubin,05_blood_urine_biochemistry.csv,Direct bilirubin,assessment Instance date; assay availability date not exported
+gamma_glutamyltransferase,05_blood_urine_biochemistry.csv,Gamma glutamyltransferase,assessment Instance date; assay availability date not exported
+glucose,05_blood_urine_biochemistry.csv,Glucose,assessment Instance date; assay availability date not exported
+glycated_haemoglobin_hba1c,05_blood_urine_biochemistry.csv,Glycated haemoglobin (HbA1c),assessment Instance date; assay availability date not exported
+hdl_cholesterol,05_blood_urine_biochemistry.csv,HDL cholesterol,assessment Instance date; assay availability date not exported
+igf_1,05_blood_urine_biochemistry.csv,IGF-1,assessment Instance date; assay availability date not exported
+ldl_direct,05_blood_urine_biochemistry.csv,LDL direct,assessment Instance date; assay availability date not exported
+lipoprotein_a,05_blood_urine_biochemistry.csv,Lipoprotein A,assessment Instance date; assay availability date not exported
+oestradiol,05_blood_urine_biochemistry.csv,Oestradiol,assessment Instance date; assay availability date not exported
+phosphate,05_blood_urine_biochemistry.csv,Phosphate,assessment Instance date; assay availability date not exported
+rheumatoid_factor,05_blood_urine_biochemistry.csv,Rheumatoid factor,assessment Instance date; assay availability date not exported
+shbg,05_blood_urine_biochemistry.csv,SHBG,assessment Instance date; assay availability date not exported
+testosterone,05_blood_urine_biochemistry.csv,Testosterone,assessment Instance date; assay availability date not exported
+total_bilirubin,05_blood_urine_biochemistry.csv,Total bilirubin,assessment Instance date; assay availability date not exported
+total_protein,05_blood_urine_biochemistry.csv,Total protein,assessment Instance date; assay availability date not exported
+triglycerides,05_blood_urine_biochemistry.csv,Triglycerides,assessment Instance date; assay availability date not exported
+urate,05_blood_urine_biochemistry.csv,Urate,assessment Instance date; assay availability date not exported
+urea,05_blood_urine_biochemistry.csv,Urea,assessment Instance date; assay availability date not exported
+vitamin_d,05_blood_urine_biochemistry.csv,Vitamin D,assessment Instance date; assay availability date not exported
+basophill_count,06_blood_count.csv,Basophill count,assessment Instance date; assay availability date not exported
+basophill_percentage,06_blood_count.csv,Basophill percentage,assessment Instance date; assay availability date not exported
+eosinophill_count,06_blood_count.csv,Eosinophill count,assessment Instance date; assay availability date not exported
+eosinophill_percentage,06_blood_count.csv,Eosinophill percentage,assessment Instance date; assay availability date not exported
+haematocrit_percentage,06_blood_count.csv,Haematocrit percentage,assessment Instance date; assay availability date not exported
+haemoglobin_concentration,06_blood_count.csv,Haemoglobin concentration,assessment Instance date; assay availability date not exported
+high_light_scatter_reticulocyte_count,06_blood_count.csv,High light scatter reticulocyte count,assessment Instance date; assay availability date not exported
+high_light_scatter_reticulocyte_percentage,06_blood_count.csv,High light scatter reticulocyte percentage,assessment Instance date; assay availability date not exported
+immature_reticulocyte_fraction,06_blood_count.csv,Immature reticulocyte fraction,assessment Instance date; assay availability date not exported
+lymphocyte_count,06_blood_count.csv,Lymphocyte count,assessment Instance date; assay availability date not exported
+lymphocyte_percentage,06_blood_count.csv,Lymphocyte percentage,assessment Instance date; assay availability date not exported
+mean_corpuscular_haemoglobin,06_blood_count.csv,Mean corpuscular haemoglobin,assessment Instance date; assay availability date not exported
+mean_corpuscular_haemoglobin_concentration,06_blood_count.csv,Mean corpuscular haemoglobin concentration,assessment Instance date; assay availability date not exported
+mean_corpuscular_volume,06_blood_count.csv,Mean corpuscular volume,assessment Instance date; assay availability date not exported
+mean_platelet_thrombocyte_volume,06_blood_count.csv,Mean platelet (thrombocyte) volume,assessment Instance date; assay availability date not exported
+mean_reticulocyte_volume,06_blood_count.csv,Mean reticulocyte volume,assessment Instance date; assay availability date not exported
+mean_sphered_cell_volume,06_blood_count.csv,Mean sphered cell volume,assessment Instance date; assay availability date not exported
+monocyte_count,06_blood_count.csv,Monocyte count,assessment Instance date; assay availability date not exported
+monocyte_percentage,06_blood_count.csv,Monocyte percentage,assessment Instance date; assay availability date not exported
+neutrophill_count,06_blood_count.csv,Neutrophill count,assessment Instance date; assay availability date not exported
+neutrophill_percentage,06_blood_count.csv,Neutrophill percentage,assessment Instance date; assay availability date not exported
+nucleated_red_blood_cell_count,06_blood_count.csv,Nucleated red blood cell count,assessment Instance date; assay availability date not exported
+nucleated_red_blood_cell_percentage,06_blood_count.csv,Nucleated red blood cell percentage,assessment Instance date; assay availability date not exported
+platelet_count,06_blood_count.csv,Platelet count,assessment Instance date; assay availability date not exported
+platelet_crit,06_blood_count.csv,Platelet crit,assessment Instance date; assay availability date not exported
+platelet_distribution_width,06_blood_count.csv,Platelet distribution width,assessment Instance date; assay availability date not exported
+red_blood_cell_erythrocyte_count,06_blood_count.csv,Red blood cell (erythrocyte) count,assessment Instance date; assay availability date not exported
+red_blood_cell_erythrocyte_distribution_width,06_blood_count.csv,Red blood cell (erythrocyte) distribution width,assessment Instance date; assay availability date not exported
+reticulocyte_count,06_blood_count.csv,Reticulocyte count,assessment Instance date; assay availability date not exported
+reticulocyte_percentage,06_blood_count.csv,Reticulocyte percentage,assessment Instance date; assay availability date not exported
+white_blood_cell_leukocyte_count,06_blood_count.csv,White blood cell (leukocyte) count,assessment Instance date; assay availability date not exported

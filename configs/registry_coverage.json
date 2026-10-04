@@ -1,0 +1,8 @@
+{
+  "status": "unverified",
+  "source_version": null,
+  "evidence": null,
+  "coverage_file": null,
+  "required_columns": ["participant_id", "registry_start", "registry_end_exclusive"],
+  "note": "Supply participant-level verified coverage with data-version and region/source provenance. End is exclusive: coverage through 2020-12-31 means end_exclusive=2021-01-01. Do not derive from last observed event or HES cutoff."
+}

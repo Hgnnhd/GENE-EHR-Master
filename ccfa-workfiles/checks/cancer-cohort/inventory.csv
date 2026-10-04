@@ -1,0 +1,13 @@
+file,source,rows,unique_ids,missing_ids,columns,bytes
+UKB_Base_Information.csv,ehr,502163,502163,0,1594,2337867448
+UKB_First_occurrences.csv,ehr,502163,502163,0,1131,632719327
+UKB_algorithmically_defined_outcomes.csv,ehr,502163,502163,0,20,15787842
+UKB_death_cause.csv,ehr,112914,44197,0,6,10296374
+UKB_death.csv,ehr,44559,44499,0,6,4258276
+UKB_gp_registrations.csv,ehr,634675,502163,0,3,14440921
+UKB_hesin.csv,ehr,4237811,449017,0,8,397663571
+UKB_self_reported_conditions.csv,ehr,502163,502163,0,481,281549387
+UKB_treatment_medication_codes.csv,ehr,502163,502163,0,195,123082272
+UKB_visit_and_followup_dates.csv,ehr,502163,502163,0,10,25727965
+cancer.csv,legacy,502163,502163,0,83,56466797
+record.csv,legacy,502163,502163,0,263,503796682

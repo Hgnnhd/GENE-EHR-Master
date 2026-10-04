@@ -1,0 +1,91 @@
+{
+  "sex_crosswalk": {
+    "Female": {
+      "0": 0,
+      "1": 273175
+    },
+    "Male": {
+      "0": 228988,
+      "1": 0
+    }
+  },
+  "participants": 502163,
+  "death_date_conflict_people": 0,
+  "registry": {
+    "entries": 167931,
+    "qc_counts": {
+      "valid": 167921,
+      "missing_or_invalid_code": 9,
+      "after_death": 1
+    }
+  },
+  "first_occurrence_invalid_values": {
+    "Code has event date after participant's date of birth and falls in the same calendar year as date of birth": 650,
+    "Code has event date matching participant's date of birth": 831,
+    "Code has event date in the future and is presumed to be a place-holder or other system default {2037-07-07}": 6
+  },
+  "hospital_array_mismatch_people": 42,
+  "hospital_unresolved_malignancy_people": 10,
+  "events": {
+    "rows": 8566785,
+    "people": 488608,
+    "codes": 1988
+  },
+  "self_report": {
+    "malignant_history": 43148,
+    "excluded_c44_or_precancer": 11571,
+    "ambiguous": 3106
+  },
+  "landmarks": {
+    "2011-01-01": {
+      "clinical_candidates": 456834,
+      "eligible_with_verified_coverage": 0,
+      "observed_top10_people": 13912,
+      "empty_history_candidates": 35333,
+      "followup_status": {
+        "coverage_unverified": 456834,
+        "ineligible": 45329
+      }
+    },
+    "2016-01-01": {
+      "clinical_candidates": 429953,
+      "eligible_with_verified_coverage": 0,
+      "observed_top10_people": 15803,
+      "empty_history_candidates": 22808,
+      "followup_status": {
+        "coverage_unverified": 429953,
+        "ineligible": 72210
+      }
+    }
+  },
+  "unique_observed_top10_people": 29715,
+  "features": {
+    "rows": 886787,
+    "fields": 66,
+    "time_basis": "assessment-date retrospective measurements"
+  },
+  "pretraining": {
+    "participants": 351514,
+    "events": 4039023,
+    "vocabulary_codes": 1945,
+    "internal_roles": {
+      "train": 333939,
+      "validation": 17575
+    },
+    "special_tokens": {
+      "PAD": 0,
+      "UNK": 1,
+      "MASK": 2,
+      "CLS": 3,
+      "EMPTY": 4
+    }
+  },
+  "quarantine": {
+    "first_occurrences/before_birth_or_after_death": 187,
+    "first_occurrences/invalid_date_or_code": 1487,
+    "hospital/array_mismatch_or_invalid_pair": 4807,
+    "hospital/before_birth_or_after_death": 2
+  },
+  "coverage_status": "unverified",
+  "elapsed_seconds": 386.2
+}

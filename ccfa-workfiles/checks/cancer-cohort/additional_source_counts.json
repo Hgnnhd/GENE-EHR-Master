@@ -1,0 +1,32 @@
+{
+  "UKB_hesin.csv": {
+    "counted_columns": 5,
+    "nonempty_cells": 18694582,
+    "rows_with_any": 4237770,
+    "participants_with_any": 449012
+  },
+  "UKB_gp_registrations.csv": {
+    "counted_columns": 2,
+    "nonempty_cells": 532966,
+    "rows_with_any": 360225,
+    "participants_with_any": 227725
+  },
+  "UKB_treatment_medication_codes.csv": {
+    "counted_columns": 192,
+    "nonempty_cells": 1436753,
+    "rows_with_any": 377179,
+    "participants_with_any": 377179
+  },
+  "UKB_self_reported_conditions.csv": {
+    "counted_columns": 160,
+    "nonempty_cells": 1326015,
+    "rows_with_any": 401140,
+    "participants_with_any": 401140
+  },
+  "UKB_algorithmically_defined_outcomes.csv": {
+    "counted_columns": 19,
+    "nonempty_cells": 220521,
+    "rows_with_any": 133668,
+    "participants_with_any": 133668
+  }
+}

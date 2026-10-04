@@ -1,0 +1,135 @@
+{
+  "cohort": {
+    "participants": 502163,
+    "birth_overlap": 502163,
+    "record_only_ids": 0,
+    "baseline_dates": {
+      "n": 502163,
+      "min": "2006-03-13",
+      "max": "2010-10-01"
+    },
+    "birth_dates": {
+      "n": 502163,
+      "min": "1934-03-01",
+      "max": "1971-11-01"
+    },
+    "birth_day_distribution": {
+      "1": 502163
+    },
+    "sex_counts": {
+      "Female": 273175,
+      "Male": 228988
+    },
+    "legacy_record_sex_crosswalk": {
+      "Female": {
+        "0": 0,
+        "1": 273175
+      },
+      "Male": {
+        "0": 228988,
+        "1": 0
+      }
+    },
+    "death_dates": {
+      "n": 44499,
+      "min": "2006-05-10",
+      "max": "2022-12-19"
+    },
+    "lost_dates": {
+      "n": 1297,
+      "min": "2007-12-03",
+      "max": "2016-12-06"
+    }
+  },
+  "cancer_id_overlap": {
+    "source_ids": 502163,
+    "matched_ids": 502163,
+    "legacy_only_ids": 0
+  },
+  "cancer_registry": {
+    "entries": 167931,
+    "patients": 123747,
+    "date_parse_failures": 0,
+    "code_without_date": 0,
+    "date_without_code": 9,
+    "icd9_fallback_entries": 15246,
+    "dates": {
+      "n": 167931,
+      "min": "1957-09-20",
+      "max": "2022-06-01"
+    },
+    "malignant_excluding_C44_patients": 79888,
+    "malignant_excluding_C44_entries": 97108,
+    "top10_patients": 55597,
+    "top10_registry_entries": 63630
+  },
+  "death_cause_classifications": {
+    "Contributory cause of death": 68658,
+    "Primary cause of death": 44256
+  },
+  "death_cause_primary_unique_patients": 44196,
+  "death_cause_primary_cancer_patients": 21240,
+  "first_occurrences": {
+    "nonempty_date_cells": 6108490,
+    "invalid_dates": 1487,
+    "valid_events": 6107003,
+    "patients": 483681,
+    "codes": 1127,
+    "dates": {
+      "n": 6107003,
+      "min": "1937-11-01",
+      "max": "2023-09-01"
+    }
+  },
+  "hospital_diagnoses": {
+    "codes": 7015908,
+    "date_cells": 7015908,
+    "count_mismatch_patients": 42,
+    "codes_without_date": 279,
+    "invalid_date_values": 0,
+    "valid_events": 7015629,
+    "patients": 446828,
+    "icd3_codes": 1942,
+    "dates": {
+      "n": 7015629,
+      "min": "1992-03-31",
+      "max": "2022-10-31"
+    }
+  },
+  "combined_history": {
+    "unique_patient_icd3_events_before_date_qc": 8568291,
+    "before_birth": 162,
+    "after_death": 25,
+    "unknown_birth": 0,
+    "valid_first_icd3_events": 8568104,
+    "patients": 488608,
+    "icd3_codes": 1988,
+    "dates": {
+      "n": 8568104,
+      "min": "1937-11-01",
+      "max": "2023-09-01"
+    },
+    "events_per_participant": {
+      "0.0": 0.0,
+      "0.25": 6.0,
+      "0.5": 13.0,
+      "0.75": 23.0,
+      "0.9": 37.0,
+      "0.95": 47.0,
+      "1.0": 172.0
+    },
+    "zero_history_participants": 13555
+  },
+  "landmark_assumptions": {
+    "registry_observed_date_envelope": "2022-06-01",
+    "administrative_registry_censoring_date": "UNKNOWN; no claim of complete 5-year follow-up",
+    "all_cancer_exclusion": "registry C00-C97 excluding C44; ICD9 140-208 excluding 173 fallback",
+    "history": "earliest date per participant and ICD10 three-character code across first occurrences + hospital diagnoses",
+    "birth_precision": "see birth_day_distribution; birthdays treated as stored dates",
+    "event_counts": "registry-observed first site diagnoses; first-any endpoints counted only if tied for first non-C44 malignant diagnosis"
+  },
+  "registry_death_inconsistency": {
+    "registry_entries_after_death": 1,
+    "registry_entries_before_birth": 0
+  }
+}

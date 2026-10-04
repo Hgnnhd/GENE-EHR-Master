@@ -1,0 +1,15 @@
+landmark,step,removed,remaining
+2011-01-01,not_recruited,0,502163
+2011-01-01,dead_at_landmark,2678,499485
+2011-01-01,lost_at_landmark,178,499307
+2011-01-01,prior_registry_cancer,32301,467006
+2011-01-01,prior_hospital_cancer,2381,464625
+2011-01-01,prior_self_report_cancer,6274,458351
+2011-01-01,unresolved_history_or_dates,1517,456834
+2016-01-01,not_recruited,0,502163
+2016-01-01,dead_at_landmark,14189,487974
+2016-01-01,lost_at_landmark,1291,486683
+2016-01-01,prior_registry_cancer,46076,440607
+2016-01-01,prior_hospital_cancer,3501,437106
+2016-01-01,prior_self_report_cancer,5740,431366
+2016-01-01,unresolved_history_or_dates,1413,429953

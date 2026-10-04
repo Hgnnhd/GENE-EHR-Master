@@ -1,0 +1,19 @@
+{
+  "accessed": "2026-10-04",
+  "source": "https://gco.iarc.who.int/media/globocan/factsheets/populations/900-world-fact-sheet.pdf",
+  "edition": "GLOBOCAN 2024 — September 2026, as printed in retrieved official PDF",
+  "criterion": "world, both sexes, all ages; ranked by estimated number of cancer deaths, not case fatality",
+  "pdf_sha256": "bfc7e88b1128bf5f1e4134669d3dd96175a5de3e20156cb842a8f9aff45901b3",
+  "death_counts": {
+    "lung": 1861839,
+    "colorectal": 917895,
+    "liver": 732489,
+    "breast": 693660,
+    "stomach": 641554,
+    "pancreas": 490786,
+    "oesophagus": 441994,
+    "prostate": 419849,
+    "leukaemia": 292234,
+    "cervix": 279583
+  }
+}

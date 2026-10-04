@@ -1,0 +1,89 @@
+{
+  "config": {
+    "landmarks": [
+      "2011-01-01",
+      "2016-01-01"
+    ],
+    "horizon_years": 5,
+    "seed": 42,
+    "pretrain_before": "2016-01-01",
+    "pretrain_internal_validation_fraction": 0.05,
+    "coverage_manifest": "configs/registry_coverage.json"
+  },
+  "coverage": {
+    "status": "unverified",
+    "source_version": null,
+    "evidence": null,
+    "coverage_file": null,
+    "required_columns": [
+      "participant_id",
+      "registry_start",
+      "registry_end_exclusive"
+    ],
+    "note": "Supply participant-level verified coverage with data-version and region/source provenance. End is exclusive: coverage through 2020-12-31 means end_exclusive=2021-01-01. Do not derive from last observed event or HES cutoff."
+  },
+  "sources": [
+    {
+      "file": "app176660_20240512000635.dataset.codings.csv",
+      "bytes": 6201387,
+      "mtime_ns": 1777480238318747767
+    },
+    {
+      "file": "cancer.csv",
+      "bytes": 56466797,
+      "mtime_ns": 1777276692925611369
+    },
+    {
+      "file": "record.csv",
+      "bytes": 503796682,
+      "mtime_ns": 1769422825453785559
+    },
+    {
+      "file": "01_demographics_socioeconomic.csv",
+      "bytes": 222630175,
+      "mtime_ns": 1790602020260972712
+    },
+    {
+      "file": "02_lifestyle.csv",
+      "bytes": 761362167,
+      "mtime_ns": 1790602020379971475
+    },
+    {
+      "file": "04_anthropometry_physical_cardiovascular.csv",
+      "bytes": 192508895,
+      "mtime_ns": 1790602020437970871
+    },
+    {
+      "file": "05_blood_urine_biochemistry.csv",
+      "bytes": 117637231,
+      "mtime_ns": 1790602020611969061
+    },
+    {
+      "file": "06_blood_count.csv",
+      "bytes": 115854511,
+      "mtime_ns": 1790602020635968812
+    },
+    {
+      "file": "UKB_First_occurrences.csv",
+      "bytes": 632719327,
+      "mtime_ns": 1790610554849017872
+    },
+    {
+      "file": "UKB_death.csv",
+      "bytes": 4258276,
+      "mtime_ns": 1791013433355328365
+    },
+    {
+      "file": "UKB_self_reported_conditions.csv",
+      "bytes": 281549387,
+      "mtime_ns": 1791013462377032822
+    },
+    {
+      "file": "UKB_visit_and_followup_dates.csv",
+      "bytes": 25727965,
+      "mtime_ns": 1791013443293227464
+    }
+  ],
+  "pipeline_sha256": "b06a4012eb440ac0fb32675745029cf8e6679a5a5d4b4769a9267e64819379be",
+  "source_fingerprints": "size and mtime, not cryptographic raw-file hashes"
+}

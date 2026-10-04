@@ -1,0 +1,8 @@
+{
+  "landmarks": ["2011-01-01", "2016-01-01"],
+  "horizon_years": 5,
+  "seed": 42,
+  "pretrain_before": "2016-01-01",
+  "pretrain_internal_validation_fraction": 0.05,
+  "coverage_manifest": "configs/registry_coverage.json"
+}
