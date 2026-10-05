@@ -25,8 +25,8 @@ def run(args):
     variant = variant_name(cfg, getattr(args, "pretrain_variant", None))
     cutoff = variant_cutoff(cfg, cohort, variant)
     banner(f"Pretraining {args.model} (masked codes; variant {variant}: codes before {cutoff.date()})")
+    device = pick_device(args.device)  # before any CUDA call
     seed_everything(cfg["seed"])
-    device = pick_device(args.device)
     data = PretrainData(args.output, args.report, cutoff, cfg["pretrain_max_len"])
     pcfg = cfg["pretrain"]
     collate = mlm_collate(pcfg["mask_prob"], data.vocab_size)

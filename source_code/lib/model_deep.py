@@ -26,8 +26,8 @@ def run(args):
     name = run_name(args.model, variant)
     check_build(args.output)
     banner(f"Training {name} (labels: {mode})")
+    device = pick_device(args.device)  # before any CUDA call
     seed_everything(cfg["seed"])
-    device = pick_device(args.device)
     data = NodeData(args.output, args.report, mode, cfg["max_len"])
     require_labels(data)
     tcfg = cfg["train"]

@@ -123,6 +123,12 @@ def encode_sequences(frame, vocab, max_len):
     becomes a single EMPTY token. Returns lists of int32 tokens, float32 days, int32 visit index.
     """
     keep = max_len - 1
+    lengths = frame["codes"].list.len()
+    if len(lengths):
+        q = lengths.quantile
+        cut = int((lengths > keep).sum())
+        log(f"codes per sequence: median {q(0.5):.0f}, p95 {q(0.95):.0f}, p99 {q(0.99):.0f}, max {lengths.max()}; "
+            f"{cut:,} of {len(lengths):,} ({cut / len(lengths):.2%}) exceed {keep} and are cut to the most recent {keep}")
     frame = frame.select(
         pl.col("codes").list.eval(pl.element().replace_strict(vocab, default=SPECIAL["UNK"], return_dtype=pl.Int32)).list.tail(keep).alias("tok"),
         pl.col("days_before").list.tail(keep).alias("days"),

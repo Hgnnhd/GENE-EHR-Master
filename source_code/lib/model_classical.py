@@ -7,10 +7,12 @@ models stop early on the validation split. XGBoost uses the GPU when one is visi
 import time
 
 import numpy as np
+import torch
 from scipy import sparse
 
 from .common import banner, log, progress
 from .model_metrics import auroc
+from .model_training import pick_device
 from .model_data import SITE_KEYS, SPECIAL, NodeData, check_build, load_config, model_dir, require_labels, write_predictions
 
 
@@ -61,6 +63,7 @@ def run(args):
     mode = args.label_mode or cfg["label_mode"]
     names = args.models.split(",") if args.models else list(cfg["classical_models"])
     check_build(args.output)
+    device = pick_device(args.device)  # cuda:N -> this GPU only, before XGBoost touches CUDA
     banner(f"Training classical baselines: {', '.join(names)} (labels: {mode})")
     data = NodeData(args.output, args.report, mode, cfg["max_len"])
     require_labels(data)
@@ -68,7 +71,7 @@ def run(args):
     X = design_matrix(data)
     train, val = data.rows("train"), data.rows("validation")
     eval_rows = np.concatenate([val, data.rows("test")])
-    gpu = (args.device or "cuda").startswith("cuda") and _cuda()
+    gpu = device.type == "cuda" and torch.cuda.is_available()
     log(f"{X.shape[0]:,} nodes x {X.shape[1]:,} features ({X.nnz:,} non-zeros); xgboost on {'GPU' if gpu else 'CPU'}")
     for name in names:
         params = cfg["classical_models"][name]
@@ -93,10 +96,3 @@ def run(args):
                            "minutes": round((time.time() - t0) / 60, 1)})
         log(f"{name} done in {(time.time() - t0) / 60:.1f} min")
 
-
-def _cuda():
-    try:
-        import torch
-        return torch.cuda.is_available()
-    except ImportError:
-        return False

@@ -1,6 +1,8 @@
 """Training loops shared by steps 10 and 12: optimiser, schedule, early stopping, prediction."""
 import json
 import math
+import os
+import re
 import time
 
 import numpy as np
@@ -18,6 +20,14 @@ def seed_everything(seed):
 
 
 def pick_device(name=None):
+    """Resolve --device. "cuda:N" restricts this process to GPU N via CUDA_VISIBLE_DEVICES (set before
+    CUDA starts), so PyTorch never probes the other GPUs; probing can fail when the driver lists a GPU
+    the CUDA runtime cannot use ("device >= 0 && device < num_gpus INTERNAL ASSERT FAILED")."""
+    match = re.fullmatch(r"cuda:(\d+)", name or "")
+    if match and "CUDA_VISIBLE_DEVICES" not in os.environ and not torch.cuda.is_initialized():
+        os.environ["CUDA_VISIBLE_DEVICES"] = match.group(1)
+        log(f"CUDA_VISIBLE_DEVICES={match.group(1)} (this process uses only that GPU, as cuda:0)")
+        return torch.device("cuda:0")
     if name:
         return torch.device(name)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
