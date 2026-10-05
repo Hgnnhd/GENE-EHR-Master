@@ -6,7 +6,7 @@
 
 ## 四个主要步骤
 
-完整实验按顺序写在 [`run_main_experiment.sh`](run_main_experiment.sh)，每一步一个命令：
+完整实验按顺序写在 [`run_main_experiment.sh`](run_main_experiment.sh)，每一步一个命令（详细说明见 [运行命令](docs/experiment_commands.md)）：
 
 ```bash
 bash run_main_experiment.sh data                    # 1. 数据构建与校验

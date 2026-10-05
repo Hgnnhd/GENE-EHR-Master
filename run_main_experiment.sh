@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Main experiment, step by step. Run from anywhere:
+# 主实验脚本：按顺序执行，每一步一个命令（在任意目录运行均可）。
 #
-#   bash run_main_experiment.sh <step> [<step> ...]
-#   bash run_main_experiment.sh all                  # data -> pretrain -> main -> ablations -> evaluate
+#   bash run_main_experiment.sh data                      # 1. 数据构建与校验
+#   bash run_main_experiment.sh pretrain                  # 2. 三个模型预训练（方案 A），各占一张卡同时跑
+#   bash run_main_experiment.sh main                      # 3. 主实验：主模型 + 全部基线，预训练模型载入权重后微调
+#   bash run_main_experiment.sh ablation_pretrain         #    消融①：三个预训练模型改为从零训练
+#   bash run_main_experiment.sh ablation_single           #    消融②：主模型逐个癌种单独训练
+#   bash run_main_experiment.sh pretrain_b sensitivity_b  #    敏感性分析 B：只用 2011 年前数据预训练，再微调
+#   bash run_main_experiment.sh evaluate                  # 4. 评估全部模型
+#   bash run_main_experiment.sh all                       #    以上全部，按顺序执行
 #
-# Settings (environment variables, defaults in brackets):
-#   GPUS        GPU ids for parallel jobs                   [0,1,2,3,4,5]
-#   LABEL_MODE  verified | provisional_observed (debug only) [verified]
-#   PY          python interpreter                          [python]
-#   RESUME=1    continue interrupted pretraining from last.pt
+#   # 单个模型
+#   MODEL=behrt GPU=2 bash run_main_experiment.sh finetune   # 载入预训练权重
+#   MODEL=behrt GPU=2 bash run_main_experiment.sh scratch    # 从零训练
 #
-# Steps:
-#   data          1. build cohorts, outcomes, model inputs, pretraining corpus; validate
-#   pretrain      2. masked-code pretraining of ehr_transformer, behrt, medbert (variant A, one GPU each)
-#   pretrain_b       same for sensitivity B (pretraining codes before 2011 only)
-#   main          3. main experiment: ehr_transformer + every baseline, joint 10-cancer competing-risk
-#                    training; pretrained models LOAD their step-2 weights and fine-tune
-#   finetune         one pretrained model on one GPU (loads weights), e.g. MODEL=behrt GPU=0
-#   scratch          one pretrained model trained from scratch, no weights loaded, e.g. MODEL=ehr_transformer GPU=0
-#   ablation_pretrain   ehr_transformer / behrt / medbert from scratch (pretraining ablation)
-#   ablation_single     ehr_transformer, one model per cancer site (joint-training ablation)
-#   sensitivity_b       pretrained models fine-tuned from the variant-B weights
-#   evaluate      4. evaluate everything trained so far (IPCW AUROC / Brier / calibration at 1, 3, 5 years)
+# 可一次写多个步骤，按顺序执行。环境变量（方括号内为默认值）：
+#   GPUS        并行任务使用的 GPU 编号                     [0,1,2,3,4,5]
+#   LABEL_MODE  verified | provisional_observed（仅调试）   [verified]
+#   PY          Python 解释器                               [python]
+#   MODEL, GPU  finetune / scratch 使用的模型和 GPU         [ehr_transformer, 0]
+#   RESUME=1    预训练从 last.pt 接着训练
+#
+# 日志写在 logs/；说明文档见 docs/experiment_commands.md。
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -88,11 +88,12 @@ all() {
   data; pretrain; pretrain_b; main; ablation_pretrain; ablation_single; sensitivity_b; evaluate
 }
 
-[ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 1; }
+usage() { sed -n '2,/^[^#]/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'; }
+[ $# -gt 0 ] || { usage; exit 1; }
 for step in "$@"; do
   case "$step" in
     data|pretrain|pretrain_b|main|finetune|scratch|ablation_pretrain|ablation_single|sensitivity_b|evaluate|all)
       echo "=== $step ($(date '+%F %T')) ==="; "$step" ;;
-    *) echo "unknown step: $step"; sed -n '2,32p' "$0"; exit 1 ;;
+    *) echo "unknown step: $step"; usage; exit 1 ;;
   esac
 done
