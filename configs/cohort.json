@@ -1,5 +1,12 @@
 {
-  "landmarks": ["2011-01-01", "2016-01-01"],
+  "data_dirs": {
+    "ukb_fields": "/data15/hd/ehr",
+    "hospital_cancer": "/data/hd/WB-MRI-main/data/EHR"
+  },
+  "landmarks": [
+    "2011-01-01",
+    "2016-01-01"
+  ],
   "horizon_years": 5,
   "seed": 42,
   "pretrain_before": "2016-01-01",

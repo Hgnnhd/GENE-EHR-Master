@@ -2,7 +2,28 @@
   "status": "unverified",
   "source_version": null,
   "evidence": null,
+  "assessment_centre_file": "assessment centre.csv",
+  "regions": {
+    "England": {
+      "registry_start": null,
+      "registry_end_exclusive": null
+    },
+    "Scotland": {
+      "registry_start": null,
+      "registry_end_exclusive": null
+    },
+    "Wales": {
+      "registry_start": null,
+      "registry_end_exclusive": null
+    }
+  },
   "coverage_file": null,
-  "required_columns": ["participant_id", "registry_start", "registry_end_exclusive"],
-  "note": "Supply participant-level verified coverage with data-version and region/source provenance. End is exclusive: coverage through 2020-12-31 means end_exclusive=2021-01-01. Do not derive from last observed event or HES cutoff."
+  "how_to_verify": [
+    "1. Find the cancer-registry coverage dates for THIS data release in the UK Biobank documentation (data providers and dates of data availability), separately for England, Scotland and Wales.",
+    "2. Enter them under regions: registry_start = first date covered, registry_end_exclusive = day AFTER the last date covered (coverage through 2020-12-31 -> 2021-01-01).",
+    "3. Fill source_version (data release / application / download date) and evidence (document title or URL and the date it was consulted).",
+    "4. Set status to verified and rebuild: python source_code/01_build_data.py --from coverage",
+    "Recruitment country comes from the Instance 0 assessment centre (assessment_centre_file in the hospital_cancer directory). Never derive dates from the last observed diagnosis or HES cutoff.",
+    "Alternatively supply a participant-level CSV (participant_id, registry_start, registry_end_exclusive) as coverage_file."
+  ]
 }

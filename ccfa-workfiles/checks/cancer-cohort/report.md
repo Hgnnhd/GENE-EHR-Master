@@ -111,7 +111,7 @@ First occurrences 有 1,487 个不可解析日期单元格，已不计入有效�
 
 ## 复现与结果文件
 
-`python source/audit.py --ehr <new-ehr-directory> --legacy <legacy-ehr-directory>`
+`python source/audit.py --ukb-fields <UKB字段导出目录> --hospital-cancer <住院诊断与癌症登记目录>`
 
 `python source/report.py`
 

@@ -13,6 +13,9 @@ SITES = [
     ("leukaemia", "白血病", list(range(91, 96)), list(range(204, 209)), None),
     ("cervix", "宫颈癌", [53], [180], "Female"),
 ]
+# C76-C80 / ICD-9 195-199: ill-defined, secondary or unknown primary; never a target site.
+UNSPECIFIED_SITE = "secondary_or_unknown_primary"
+FOLLOWUP_EVALUABLE = ["cancer", "death", "censored", "event_free_5y"]
 
 
 def dates(s):
@@ -30,6 +33,8 @@ def classify(c10, c9, sex):
         if restrict:
             m &= sex.eq(restrict)
         site.loc[m] = key
+    unspecified = n10.between(76, 80) | (fallback & n9.between(195, 199))
+    site.loc[site.eq("") & malignant & unspecified] = UNSPECIFIED_SITE
     return site, malignant, fallback & n9.notna()
 
 
@@ -63,3 +68,32 @@ def resolve_followup(t0, end, cancer, death, lost, start, stop):
     if pd.notna(event_date) and event_date < censor:
         return ("cancer" if cancer == event_date else "death"), event_date
     return ("event_free_5y" if censor == end else "censored"), censor
+
+
+def resolve_followup_frame(t0, end, cancer, death, lost, start, stop):
+    """Vectorized resolve_followup over aligned Series; returns (status, observation_end)."""
+    idx = cancer.index
+    unverified = start.isna() | stop.isna()
+    unobservable = start.gt(t0) | stop.le(t0)
+    censor = pd.concat([pd.Series(end, index=idx), stop, lost], axis=1).min(axis=1)
+    event = pd.concat([cancer, death], axis=1).min(axis=1)
+    pre = event.lt(t0)
+    tie = event.notna() & event.eq(lost) & lost.lt(end) & lost.lt(stop)
+    hit = event.lt(censor)
+    conditions = [unverified, unobservable, pre, tie, hit & cancer.eq(event), hit, censor.eq(end)]
+    labels = ["coverage_unverified", "not_observable_at_landmark", "pre_landmark_event",
+              "event_loss_tie_unresolved", "cancer", "death", "event_free_5y"]
+    status = pd.Series(np.select(conditions, labels, "censored"), index=idx, dtype=object)
+    observed = event.where(hit, censor).where(~(unverified | unobservable | pre | tie))
+    return status, observed
+
+
+def site_event_code(status, member, applicable):
+    """Competing-risk coding for one target site: 0 censored/event-free, 1 target first cancer,
+    2 competing event (death or another first malignancy); NA when not evaluable."""
+    code = pd.Series(pd.NA, index=status.index, dtype="Int8")
+    defined = status.isin(FOLLOWUP_EVALUABLE) & applicable
+    code.loc[defined] = 0
+    code.loc[defined & status.isin(["cancer", "death"])] = 2
+    code.loc[defined & status.eq("cancer") & member] = 1
+    return code
