@@ -9,6 +9,7 @@
     "main":        {"before": "2016-01-01", "note": "A: train-split codes before 2016-01-01 (main analysis)"},
     "strict_2011": {"before": "2011-01-01", "note": "B: train-split codes before 2011-01-01; no post-2011 information (sensitivity)"}
   },
+  "survival": {"bins": 5, "report_years": [1, 3, 5]},
   "pretrain": {
     "epochs": 40, "batch_size": 512, "lr": 5e-4, "weight_decay": 0.01, "warmup_frac": 0.05,
     "mask_prob": 0.15, "patience": 4
@@ -18,6 +19,7 @@
     "warmup_frac": 0.05, "patience": 4
   },
   "deep_models": {
+    "cr_logistic":     {"family": "linear", "lr": 1e-2},
     "mlp":             {"family": "bag",         "hidden": [512, 256], "dropout": 0.2},
     "gru":             {"family": "rnn",         "cell": "gru",  "d_model": 256, "layers": 2, "dropout": 0.1},
     "lstm":            {"family": "rnn",         "cell": "lstm", "d_model": 256, "layers": 2, "dropout": 0.1},

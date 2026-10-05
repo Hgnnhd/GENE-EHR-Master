@@ -66,7 +66,7 @@ def run(args):
     device = pick_device(args.device)  # cuda:N -> this GPU only, before XGBoost touches CUDA
     banner(f"Training classical baselines: {', '.join(names)} (labels: {mode})")
     data = NodeData(args.output, args.report, mode, cfg["max_len"])
-    require_labels(data)
+    require_labels(data, "binary")
     log("Building bag-of-codes design matrix")
     X = design_matrix(data)
     train, val = data.rows("train"), data.rows("validation")

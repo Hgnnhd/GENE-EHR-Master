@@ -1,7 +1,8 @@
-"""Shared data for the model steps (10-13): token sequences, static context, labels and batches.
+"""Shared data for the model steps: token sequences, static context, targets and batches.
 
 Every model sees the same candidate nodes, splits, inputs (codes before the landmark,
-age at landmark, sex, landmark) and labels.
+age at landmark, sex, landmark) and outcomes. Deep models train on competing-risk targets
+(model_targets.py); classical baselines use the per-site 5-year binary labels.
 """
 import argparse
 import json
@@ -14,14 +15,15 @@ import torch
 
 from .common import ID, ROOT, log
 from .definitions import SITES
+from .model_targets import COLUMNS as TARGET_COLUMNS, bin_targets, competing_targets
 
 SPECIAL = {"PAD": 0, "UNK": 1, "MASK": 2, "CLS": 3, "EMPTY": 4}
 SITE_KEYS = [s[0] for s in SITES]
 LABEL_MODES = ("verified", "provisional_observed")
 PROVISIONAL_WARNING = (
-    "LABEL MODE provisional_observed: positives are registry-observed first cancers, everyone else counts as 0. "
-    "Censored people are treated as negatives, so these results are for pipeline debugging only and must not "
-    "be reported (docs/cohort_protocol.md section 5).")
+    "LABEL MODE provisional_observed: outcomes are registry-observed events and the registry is assumed complete "
+    "(no administrative censoring), so unobserved follow-up counts as event-free. For pipeline debugging only; "
+    "results must not be reported (docs/cohort_protocol.md section 5).")
 
 
 def load_config(path=None):
@@ -64,6 +66,23 @@ def pretrained_dir(data_dir, variant, model):
 def run_name(model, variant):
     """Output name of a fine-tuned model; non-main pretraining variants get a suffix."""
     return model if variant == "main" else f"{model}__pt_{variant}"
+
+
+def survival_setup(cfg, cohort_config):
+    """(horizon years from configs/cohort.json, number of discrete time bins from configs/models.json)."""
+    horizon = json.loads(Path(cohort_config).read_text(encoding="utf-8"))["horizon_years"]
+    n_bins = cfg["survival"]["bins"]
+    for year in cfg["survival"]["report_years"]:
+        year_bin(year, horizon, n_bins)
+    return horizon, n_bins
+
+
+def year_bin(year, horizon, n_bins):
+    """Index of the bin ending exactly at `year`; report years must fall on bin edges."""
+    edge = year * n_bins / horizon
+    if edge != int(edge) or not 1 <= edge <= n_bins:
+        raise SystemExit(f"report year {year} is not a bin edge for {n_bins} bins over {horizon} years")
+    return int(edge) - 1
 
 
 def check_build(data_dir):
@@ -145,11 +164,12 @@ def encode_sequences(frame, vocab, max_len):
 
 
 class NodeData:
-    """Candidate landmark nodes with sequences, static context and labels (aligned row order)."""
-    def __init__(self, data_dir, report_dir, label_mode, max_len):
+    """Candidate landmark nodes with sequences, static context and outcomes (aligned row order)."""
+    def __init__(self, data_dir, report_dir, label_mode, max_len, horizon_years=5, n_bins=5):
         data_dir = Path(data_dir)
         cols = [ID, "landmark", "split", "sex", "age_years_approx"]
         cols += [f"label_{s}_5y" for s in SITE_KEYS] + [f"observed_{s}_5y" for s in SITE_KEYS]
+        cols += [c for c in TARGET_COLUMNS if c not in cols]
         samples = pd.read_parquet(data_dir / "landmark_samples.parquet", columns=cols)
         samples = samples.sort_values([ID, "landmark"]).reset_index(drop=True)
         inputs = pl.read_parquet(data_dir / "landmark_inputs.parquet", columns=[ID, "landmark", "codes", "days_before", "day_index"])
@@ -167,6 +187,9 @@ class NodeData:
         self.static = static_features(self.age, samples.sex, samples.landmark)
         self.labels = label_matrix(samples, label_mode)
         self.label_mode = label_mode
+        self.horizon_years, self.n_bins = horizon_years, n_bins
+        self.targets = competing_targets(samples, label_mode, horizon_years)
+        self.event_bin, self.survived = bin_targets(self.targets, horizon_years, n_bins)
 
     def rows(self, split):
         return np.flatnonzero(self.split == split)
@@ -184,7 +207,9 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         r, d = self.rows[i], self.data
-        return d.tokens[r], d.days[r], d.visits[r], d.age[r], d.static[r], d.labels[r]
+        t = d.targets
+        return (d.tokens[r], d.days[r], d.visits[r], d.age[r], d.static[r], d.labels[r],
+                t["cause"][r], t["known"][r], t["applicable"][r], d.event_bin[r], d.survived[r])
 
 
 def pad_batch(tokens, days, visits, ages):
@@ -203,10 +228,15 @@ def pad_batch(tokens, days, visits, ages):
 
 
 def collate(batch):
-    tokens, days, visits, ages, static, labels = zip(*batch)
+    tokens, days, visits, ages, static, labels, cause, known, applicable, event_bin, survived = zip(*batch)
     out = pad_batch(tokens, days, visits, ages)
     out["static"] = torch.as_tensor(np.stack(static))
     out["labels"] = torch.as_tensor(np.stack(labels))
+    out["cause"] = torch.as_tensor(np.stack(cause))
+    out["known"] = torch.as_tensor(np.asarray(known))
+    out["applicable"] = torch.as_tensor(np.stack(applicable))
+    out["event_bin"] = torch.as_tensor(np.asarray(event_bin))
+    out["survived"] = torch.as_tensor(np.asarray(survived))
     return out
 
 
@@ -275,20 +305,29 @@ def mlm_collate(mask_prob, vocab_size, generator=None):
     return fn
 
 
-def write_predictions(directory, data, rows, probs, meta):
-    """Patient-level predictions (validation/test rows) plus a small metadata file."""
+def write_predictions(directory, data, rows, probs, meta, cif=None):
+    """Patient-level predictions (validation/test rows) plus a small metadata file.
+
+    prob_<site>: predicted probability that <site> is the first malignancy within the horizon.
+    cif_<site>_<k>y (competing-risk models): cumulative incidence by year k.
+    """
     frame = pd.DataFrame({ID: data.ids[rows], "landmark": data.landmark[rows], "split": data.split[rows]})
     for j, site in enumerate(SITE_KEYS):
         frame[f"prob_{site}"] = probs[:, j].astype(np.float32)
+    for year, values in (cif or {}).items():
+        for j, site in enumerate(SITE_KEYS):
+            frame[f"cif_{site}_{year}y"] = values[:, j].astype(np.float32)
     frame.to_parquet(Path(directory) / "predictions.parquet", index=False)
     (Path(directory) / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
 
 
-def require_labels(data):
-    available = (~np.isnan(data.labels[data.rows("train")])).sum()
+def require_labels(data, kind="survival"):
+    """kind: "survival" (competing-risk targets, deep models) or "binary" (label_*_5y, classical models)."""
+    train = data.rows("train")
+    available = data.targets["known"][train].sum() if kind == "survival" else (~np.isnan(data.labels[train])).sum()
     if data.label_mode == "verified" and available == 0:
         raise SystemExit(
-            "No verified 5-year labels: configs/registry_coverage.json is 'unverified', so label_*_5y are empty.\n"
+            "No verified outcomes: configs/registry_coverage.json is 'unverified', so follow-up and labels are empty.\n"
             "Verify registry coverage and rebuild (01_build_data.py), or run with --label-mode provisional_observed\n"
             "to debug the training pipeline only (results must not be reported).")
     if data.label_mode == "provisional_observed":

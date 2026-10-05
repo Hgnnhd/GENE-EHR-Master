@@ -1,6 +1,11 @@
-"""Deep models: shared static context and multi-site head; baselines and the main model.
+"""Deep models: shared static context and competing-risk head; baselines and the main model.
+
+Every model ends in the same Head: per yearly time bin a softmax over 13 outcomes
+(no event | 10 target sites | other first cancer | death); see model_targets.py.
 
 Families (configs/models.json "deep_models"):
+  linear       linear model on multi-hot codes + context: discrete-time competing-risk
+               (multinomial) logistic regression                         (classical statistical baseline)
   bag          MLP on multi-hot codes                                     (non-sequential baseline)
   rnn          GRU / LSTM over visits (codes summed per day)              (Choi et al. 2016, Doctor AI)
   retain       reverse-time two-level attention                           (Choi et al. 2016, RETAIN)
@@ -17,20 +22,25 @@ import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from .model_data import SITE_KEYS, SPECIAL
+from .model_data import SPECIAL
+from .model_targets import N_CLASSES
 
 N_STATIC = 3
-N_SITES = len(SITE_KEYS)
 
 
 class Head(nn.Module):
-    """Pooled representation + static context -> one logit per site."""
-    def __init__(self, d, dropout):
+    """Pooled representation + static context -> logits (batch, time bins, outcome classes)."""
+    def __init__(self, d, dropout, n_bins):
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(d + N_STATIC, d), nn.GELU(), nn.Dropout(dropout), nn.Linear(d, N_SITES))
+        self.n_bins = n_bins
+        self.net = nn.Sequential(nn.Linear(d + N_STATIC, d), nn.GELU(), nn.Dropout(dropout), nn.Linear(d, n_bins * N_CLASSES))
 
     def forward(self, pooled, static):
-        return self.net(torch.cat([pooled, static], dim=-1))
+        return self.net(torch.cat([pooled, static], dim=-1)).view(-1, self.n_bins, N_CLASSES)
+
+    def init_bias(self, log_prior):
+        with torch.no_grad():
+            self.net[-1].bias.copy_(torch.as_tensor(log_prior, dtype=torch.float32).reshape(-1))
 
 
 class Sinusoid(nn.Module):
@@ -92,7 +102,7 @@ class TransformerModel(nn.Module):
                                            batch_first=True, norm_first=True)
         self.encoder = nn.TransformerEncoder(layer, cfg["layers"], enable_nested_tensor=False)
         self.final_norm = nn.LayerNorm(d)
-        self.head = Head(d, cfg["dropout"])
+        self.head = Head(d, cfg["dropout"], cfg["n_bins"])
         self.mlm_head = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.LayerNorm(d), nn.Linear(d, vocab_size))
 
     def encode(self, b):
@@ -134,7 +144,7 @@ class RNNModel(nn.Module):
         self.visits = VisitEncoder(vocab_size, d)
         rnn = nn.GRU if cfg["cell"] == "gru" else nn.LSTM
         self.rnn = rnn(d, d, cfg["layers"], batch_first=True, dropout=cfg["dropout"] if cfg["layers"] > 1 else 0)
-        self.head = Head(d, cfg["dropout"])
+        self.head = Head(d, cfg["dropout"], cfg["n_bins"])
 
     def forward(self, b):
         x, _, lengths = self.visits(b)
@@ -158,7 +168,7 @@ class RETAIN(nn.Module):
         self.gru_alpha, self.gru_beta = nn.GRU(d, d, batch_first=True), nn.GRU(d, d, batch_first=True)
         self.w_alpha, self.w_beta = nn.Linear(d, 1), nn.Linear(d, d)
         self.drop = nn.Dropout(cfg["dropout"])
-        self.head = Head(d, cfg["dropout"])
+        self.head = Head(d, cfg["dropout"], cfg["n_bins"])
 
     def forward(self, b):
         v, vmask, lengths = self.visits(b)
@@ -180,7 +190,7 @@ class Dipole(nn.Module):
         self.rnn = nn.GRU(d, d, batch_first=True, bidirectional=True)
         self.attn = nn.Linear(2 * d, 1)
         self.combine = nn.Linear(4 * d, d)
-        self.head = Head(d, cfg["dropout"])
+        self.head = Head(d, cfg["dropout"], cfg["n_bins"])
 
     def forward(self, b):
         v, vmask, lengths = self.visits(b)
@@ -200,17 +210,44 @@ class BagMLP(nn.Module):
             layers += [nn.Linear(width, h), nn.GELU(), nn.Dropout(cfg["dropout"])]
             width = h
         self.vocab_size, self.net = vocab_size, nn.Sequential(*layers)
-        self.head = Head(width, cfg["dropout"])
+        self.head = Head(width, cfg["dropout"], cfg["n_bins"])
 
     def forward(self, b):
-        tok = b["tokens"]
-        bag = torch.zeros(tok.shape[0], self.vocab_size, device=tok.device).scatter_(1, tok, 1.0)
-        bag[:, :len(SPECIAL)] = 0
-        return self.head(self.net(bag), b["static"])
+        return self.head(self.net(multi_hot(b["tokens"], self.vocab_size)), b["static"])
 
 
-def build_model(name, cfg, vocab_size, max_len):
+def multi_hot(tok, vocab_size):
+    bag = torch.zeros(tok.shape[0], vocab_size, device=tok.device).scatter_(1, tok, 1.0)
+    bag[:, :len(SPECIAL)] = 0
+    return bag
+
+
+class LinearCompetingRisk(nn.Module):
+    """Codes present before the landmark + static context -> per-bin multinomial logits."""
+    def __init__(self, vocab_size, cfg):
+        super().__init__()
+        self.vocab_size, self.n_bins = vocab_size, cfg["n_bins"]
+        self.linear = nn.Linear(vocab_size + N_STATIC, cfg["n_bins"] * N_CLASSES)
+
+    def forward(self, b):
+        x = torch.cat([multi_hot(b["tokens"], self.vocab_size), b["static"]], dim=-1)
+        return self.linear(x).view(-1, self.n_bins, N_CLASSES)
+
+    def init_bias(self, log_prior):
+        with torch.no_grad():
+            self.linear.bias.copy_(torch.as_tensor(log_prior, dtype=torch.float32).reshape(-1))
+
+
+def init_output_bias(model, log_prior):
+    """Start every model from the empirical per-bin outcome distribution (see model_targets.log_prior)."""
+    (model if isinstance(model, LinearCompetingRisk) else model.head).init_bias(log_prior)
+
+
+def build_model(name, cfg, vocab_size, max_len, n_bins=5):
+    cfg = {**cfg, "n_bins": n_bins}
     family = cfg["family"]
+    if family == "linear":
+        return LinearCompetingRisk(vocab_size, cfg)
     if family == "transformer":
         return TransformerModel(vocab_size, cfg, max_len)
     if family == "rnn":

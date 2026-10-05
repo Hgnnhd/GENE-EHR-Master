@@ -53,7 +53,8 @@ source_code/
 | 类别 | 模型 |
 |---|---|
 | 主模型 | `ehr_transformer`：代码 + 连续年龄 + 距预测点时间 + 就诊序号编码，掩码预训练后微调 |
-| 词袋基线 | 逻辑回归、随机森林、LightGBM、XGBoost（GPU）、MLP |
+| 统计基线 | `cr_logistic`：离散时间竞争风险（多项）逻辑回归，输入代码词袋 + 背景信息 |
+| 词袋基线 | 逻辑回归、随机森林、LightGBM、XGBoost（GPU），每个癌种一个五年二分类模型；MLP |
 | 就诊序列基线 | GRU、LSTM（Doctor AI 式）、RETAIN、Dipole |
 | Transformer 基线 | Transformer（无预训练）、BEHRT、Med-BERT（仅 MLM，无住院时长任务） |
 
@@ -63,9 +64,11 @@ python source_code/03_train_models.py --model behrt --device cuda:0             
 python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models classical     # 只跑 4 个传统模型
 ```
 
-所有模型使用相同的候选节点、患者划分、输入（预测点前最近 64 个代码 + 年龄、性别、预测点）和标签；超参数在 [configs/models.json](configs/models.json)。深度模型两个预测点共享，一次输出 10 个癌种，按验证集宏平均 AUROC 早停；传统模型每个癌种一个。`03_train_models.py --gpus` 每张卡同时跑一个任务，缺预训练权重时先跑 `02_pretrain.py` 再接微调；每个任务日志在 `logs/<任务>.log`，运行中定时打印状态表，结束后自动评估（`--no-evaluate` 跳过）。
+所有模型使用相同的候选节点、患者划分、输入（预测点前最近 64 个代码 + 年龄、性别、预测点）和结局；超参数在 [configs/models.json](configs/models.json)。
 
-评估（`04_evaluate.py`）：测试集逐模型 × 预测点 × 癌种计算 AUROC（按参与者 bootstrap 95% CI）、AUPRC、Brier、校准截距与斜率。模型文件和逐人预测在 `data/processed/models/<标签模式>/<模型>/`（不入库），汇总指标在 `ccfa-workfiles/checks/cancer-cohort/models/<标签模式>/metrics.csv` 和 `auroc_table.csv`。
+**结局与输出（竞争风险）。** 深度模型和 `cr_logistic` 共用同一个输出层：把五年分成 5 个一年的时间段，每段一个 softmax，覆盖 13 类互斥结局——本段无事件、10 个目标癌种、其他首发恶性肿瘤、死亡。删失者只贡献随访到的时间段；性别不适用的癌种概率强制为 0；同日多癌种按"其中之一"计入。输出每个癌种成为首发恶性肿瘤的 1、3、5 年累积发生率。输出层偏置初始化为训练集各时间段的经验结局分布，验证集负对数似然早停。两个预测点共享一个模型。四个传统模型保留每癌种五年二分类（`label_*_5y`，删失者无标签），作为常用参照。`03_train_models.py --gpus` 每张卡同时跑一个任务，缺预训练权重时先跑 `02_pretrain.py` 再接微调；每个任务日志在 `logs/<任务>.log`，运行中定时打印状态表，结束后自动评估（`--no-evaluate` 跳过）。
+
+评估（`04_evaluate.py`）：测试集逐模型 × 预测点 × 癌种 × 年份（1、3、5 年；二分类基线只有 5 年）计算删失加权（IPCW）的时间依赖 AUROC（病例 = 到该年该癌种为首发恶性肿瘤；对照 = 到该年无事件或先发生其他事件）及按参与者 bootstrap 95% CI、IPCW Brier 分数、与 Aalen–Johansen 观察累积发生率比较的校准截距。模型文件和逐人预测在 `data/processed/models/<标签模式>/<模型>/`（不入库），汇总指标在 `ccfa-workfiles/checks/cancer-cohort/models/<标签模式>/metrics.csv` 和 `auroc_<年>y.csv`。
 
 **预训练版本。** `--pretrain-variant main`（默认，方案 A：训练组 2016 年前代码）或 `strict_2011`（方案 B：训练组 2011 年前代码，敏感性分析），定义在 `configs/models.json` 的 `pretrain_variants`。B 只对三个预训练模型重做，权重在 `models/pretrained/<版本>/`，微调结果以 `<模型>__pt_strict_2011` 与主结果并列评估：
 
@@ -73,7 +76,7 @@ python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models classical     
 python source_code/03_train_models.py --gpus 0,1,2 --pretrain-variant strict_2011
 ```
 
-**标签模式。** 默认 `verified` 使用 `label_*_5y`；登记覆盖未核实时这些标签为空，训练会直接报错退出。`--label-mode provisional_observed` 把登记已观察到的首癌当阳性、其余当阴性，删失者被当作阴性，**只用于调试训练流程，结果不能报告**；两种模式的输出分目录保存，评估不会混用。当前二分类标签排除了删失者；与删失/竞争风险相容的评价（如 IPCW）需在覆盖核实后补充。
+**标签模式。** 默认 `verified` 使用数据构建得到的随访状态、随访天数和首发癌种；登记覆盖未核实时这些为空，训练会直接报错退出。`--label-mode provisional_observed` 只用登记中已观察到的事件并假设登记完整（没有行政删失），**只用于调试训练流程，结果不能报告**；两种模式的输出分目录保存，评估不会混用。
 
 ## 输入与输出
 
