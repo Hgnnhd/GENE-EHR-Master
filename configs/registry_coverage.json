@@ -17,6 +17,17 @@
       "registry_end_exclusive": null
     }
   },
+  "candidate_dates_unconfirmed": {
+    "note": "NOT USED by the pipeline. Censoring dates quoted in published UK Biobank cancer papers (found by web search 2026-10-05, primary pages not reachable from the build environment). They may belong to an earlier data release than this 2023 export: check against the UK Biobank Showcase 'Data providers and dates' page for this release and against ccfa-workfiles/checks/cancer-cohort/registry_years_by_country.csv before copying them into regions.",
+    "England": "last date covered 2020-12-31 (registry_end_exclusive 2021-01-01)",
+    "Scotland": "last date covered 2021-11-30 (registry_end_exclusive 2021-12-01)",
+    "Wales": "last date covered 2016-12-31 (registry_end_exclusive 2017-01-01)",
+    "sources": [
+      "https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-025-03998-z",
+      "https://www.nature.com/articles/s41416-022-02053-5",
+      "https://biobank.ndph.ox.ac.uk/showcase/exinfo.cgi?src=Data_providers_and_dates"
+    ]
+  },
   "coverage_file": null,
   "how_to_verify": [
     "1. Find the cancer-registry coverage dates for THIS data release in the UK Biobank documentation (data providers and dates of data availability), separately for England, Scotland and Wales.",

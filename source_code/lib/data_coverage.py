@@ -67,15 +67,31 @@ def countries(ctx, centre_file):
     return pd.DataFrame({"centre": values, "region": country})
 
 
+def registry_years(ctx, places):
+    """Registry entries by diagnosis year x recruitment country: a cross-check that the documented
+    dates fit this export (entries should fall away after each country's end date). Not used to set dates."""
+    c = read(ctx.source(ctx.hosp, "cancer.csv")).set_index(ID)
+    years = pd.concat([dates(c[col]).dt.year for col in c.filter(regex=r"^Date of cancer diagnosis \| Instance ").columns])
+    frame = pd.DataFrame({"year": years.to_numpy(), "region": places.region.reindex(years.index).to_numpy()}).dropna()
+    table = frame.groupby(["year", "region"]).size().unstack(fill_value=0).astype(int)
+    table.index = table.index.astype(int)
+    table.to_csv(ctx.report / "registry_years_by_country.csv")
+    recent = table.loc[table.index >= table.index.max() - 7]
+    return "registry entries by diagnosis year (recent years; full table in registry_years_by_country.csv):\n" + \
+        "\n".join("      " + line for line in recent.to_string().splitlines())
+
+
 def run(args):
     ctx = Context(args, STAGE, TITLE)
     cov = manifest(ctx)
     out = ctx.out / "registry_coverage.csv"
     centre_file = cov.get("assessment_centre_file")
-    places = None
+    places, years_text = None, None
     if centre_file and (ctx.hosp / centre_file).exists():
         places = countries(ctx, centre_file)
         counts = places.region.value_counts()
+        if (ctx.hosp / "cancer.csv").exists():
+            years_text = registry_years(ctx, places)
         ctx.qc["participants_by_country"] = {k: int(v) for k, v in counts.items()}
         ctx.qc["participants_by_centre"] = {k: int(v) for k, v in places.centre.value_counts().items()}
     if cov.get("status") != "verified":
@@ -86,6 +102,8 @@ def run(args):
                  "from the UK Biobank documentation for this data release, then set status to 'verified'"]
         if places is not None:
             lines.insert(0, "recruitment country: " + ", ".join(f"{k} {fmt(v)}" for k, v in counts.items()))
+            if years_text:
+                lines.insert(1, years_text)
         else:
             lines.insert(0, f"assessment centre file '{centre_file}' not found in {ctx.hosp}")
         return ctx.done(*lines)
@@ -114,4 +132,5 @@ def run(args):
     ctx.qc["regions"] = {c: [str(s.date()), str(e.date())] for c, (s, e) in table.items() if pd.notna(s)}
     ctx.done(*[f"{c}: [{s.date()}, {e.date()}) for {fmt(counts.get(c, 0))} participants" for c, (s, e) in table.items() if pd.notna(s)],
              f"source: {cov['source_version']}; evidence: {cov['evidence']}",
-             f"participants without a recruitment centre (no coverage): {fmt(frame.region.isna().sum())}")
+             f"participants without a recruitment centre (no coverage): {fmt(frame.region.isna().sum())}",
+             *([years_text] if years_text else []))
