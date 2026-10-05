@@ -171,7 +171,7 @@ def test_rerun_from_middle_stage(built):
     build_data.run(built)
     pd.testing.assert_frame_equal(status, pd.read_parquet(built.output / "landmark_status.parquet"))
     summary = json.loads((built.report / "build_summary.json").read_text())
-    assert list(summary) == ["participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus"]
+    assert list(summary) == ["coverage", "participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus"]
     assert (built.output / "BUILD_COMPLETE.json").exists()
 
 
@@ -186,3 +186,55 @@ def test_single_stage_invalidates_build(built):
 def test_steps_run_as_scripts(script):
     out = subprocess.run([sys.executable, str(ROOT / "source_code" / script), "--help"], capture_output=True, text=True, cwd="/")
     assert out.returncode == 0, out.stderr
+
+
+def regional_manifest(tmp_path, built, centres, codes=None, status="verified"):
+    """Point the build at regional coverage dates and an assessment centre file."""
+    old = built.hospital_cancer
+    write(old / "assessment centre.csv", [{ID: i, "UK Biobank assessment centre | Instance 0": c} for i, c in centres.items()])
+    if codes:
+        codings = pd.read_csv(old / "app176660_20240512000635.dataset.codings.csv", dtype=str)
+        extra = pd.DataFrame([{"coding_name": "data_coding_10", "code": k, "meaning": v} for k, v in codes.items()])
+        pd.concat([codings.loc[codings.coding_name.ne("data_coding_10")], extra]).to_csv(
+            old / "app176660_20240512000635.dataset.codings.csv", index=False)
+    manifest = tmp_path / "regional.json"
+    manifest.write_text(json.dumps({
+        "status": status, "source_version": "synthetic release", "evidence": "test fixture",
+        "assessment_centre_file": "assessment centre.csv", "coverage_file": None,
+        "regions": {"England": {"registry_start": "1971-01-01", "registry_end_exclusive": "2021-01-01"},
+                    "Scotland": {"registry_start": "1957-01-01", "registry_end_exclusive": "2022-01-01"},
+                    "Wales": {"registry_start": "1971-01-01", "registry_end_exclusive": "2017-01-01"}}}))
+    config = json.loads(built.config.read_text())
+    config["coverage_manifest"] = str(manifest)
+    built.config.write_text(json.dumps(config))
+    built.start, built.stop, built.only = "coverage", "participants", None
+    return built
+
+
+@pytest.mark.parametrize("numeric", [False, True])
+def test_regional_coverage_from_assessment_centre(built, tmp_path, numeric):
+    ids = list(PEOPLE)
+    names = {i: ["Leeds", "Edinburgh", "Cardiff", "Stockport (pilot)"][k % 4] for k, i in enumerate(ids)}
+    codes = {"11010": "Leeds", "11005": "Edinburgh", "11003": "Cardiff", "10003": "Stockport (pilot)"}
+    centres = {i: {v: k for k, v in codes.items()}[c] for i, c in names.items()} if numeric else names
+    build_data.run(regional_manifest(tmp_path, built, centres, codes if numeric else None))
+    cov = pd.read_csv(built.output / "registry_coverage.csv", dtype=str).set_index("participant_id")
+    region = {"Leeds": "England", "Stockport (pilot)": "England", "Edinburgh": "Scotland", "Cardiff": "Wales"}
+    assert all(cov.region[i] == region[names[i]] for i in ids)
+    p = pd.read_parquet(built.output / "participants.parquet").set_index("participant_id")
+    assert p.coverage_verified.all()
+    wales = [i for i in ids if names[i] == "Cardiff"]
+    assert (p.loc[wales, "registry_end_exclusive"] == pd.Timestamp("2017-01-01")).all()
+    assert (p.loc[wales, "registry_region"] == "Wales").all()
+
+
+def test_regional_coverage_guards(built, tmp_path):
+    ids = list(PEOPLE)
+    with pytest.raises(ValueError, match="unrecognised assessment centres"):
+        build_data.run(regional_manifest(tmp_path, built, {i: "Atlantis" for i in ids}))
+    build_data.run(regional_manifest(tmp_path, built, {i: "Leeds" for i in ids}, status="unverified"))
+    assert not (built.output / "registry_coverage.csv").exists()
+    p = pd.read_parquet(built.output / "participants.parquet")
+    assert not p.coverage_verified.any()
+    summary = json.loads((built.report / "build_summary.json").read_text())
+    assert summary["coverage"]["participants_by_country"] == {"England": len(ids)}

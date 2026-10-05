@@ -55,6 +55,21 @@ MODEL=behrt GPU=2 bash run_main_experiment.sh scratch    # 从零训练
 - 可以正式运行：`data`、`pretrain`、`pretrain_b`（预训练不使用标签）。
 - `main`、两个消融、`sensitivity_b`、`evaluate`、`finetune`、`scratch` 在默认模式下会报错退出。可以用 `LABEL_MODE=provisional_observed` 跑通流程，但结果只用于调试，不能报告。
 
+## 核实登记覆盖（正式结果的前提）
+
+覆盖按招募评估中心所在国家（英格兰、苏格兰、威尔士）确定；评估中心来自 `hospital_cancer` 目录下的 `assessment centre.csv`（Instance 0，名称或数字编码均可，编码用本地 UKB 字典 `data_coding_10` 翻译）。
+
+1. 在 UK Biobank 文档中查到**本地数据版本**的三个国家癌症登记覆盖起止日期。
+2. 填入 `configs/registry_coverage.json` 的 `regions`：`registry_start` 为覆盖的第一天，`registry_end_exclusive` 为最后一天的**次日**（覆盖到 2020-12-31 填 2021-01-01）。
+3. 填写 `source_version`（数据版本、申请号或下载日期）和 `evidence`（文档名称或链接及查阅日期）。
+4. 把 `status` 改为 `verified`，从 coverage 阶段重建：
+
+```bash
+python source_code/01_build_data.py --from coverage
+```
+
+未核实时 coverage 阶段只统计各国家/评估中心人数（见 `build_summary.json`），不使用覆盖日期。日期绝不能用最后一次诊断日期或 HES 截止日期推断。
+
 ## 直接调用各脚本
 
 `run_main_experiment.sh` 只是按顺序调用以下脚本，需要更细的控制时可直接使用：

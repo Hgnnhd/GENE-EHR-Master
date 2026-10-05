@@ -60,16 +60,22 @@ def run(args):
     log("Attaching cancer-registry coverage")
     p["registry_start"] = pd.NaT
     p["registry_end_exclusive"] = pd.NaT
+    p["registry_region"] = pd.NA
     coverage = json.loads((ROOT / ctx.config["coverage_manifest"]).read_text(encoding="utf-8"))
     if coverage["status"] == "verified":
-        if not all(coverage.get(x) for x in ["source_version", "evidence", "coverage_file"]):
-            raise ValueError("Verified coverage requires source_version, evidence and coverage_file")
-        path = ROOT / coverage["coverage_file"]
+        if not all(coverage.get(x) for x in ["source_version", "evidence"]):
+            raise ValueError("Verified coverage requires source_version and evidence")
+        # A supplied participant-level file, or the one built by the coverage stage from regional dates.
+        path = ROOT / coverage["coverage_file"] if coverage.get("coverage_file") else ctx.out / "registry_coverage.csv"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} missing: run the coverage stage (01_build_data.py --from coverage)")
         ctx.used.add(path)
         cov = pd.read_csv(path, dtype=str).set_index(ID)
         assert cov.index.is_unique and set(cov.index).issubset(set(p.index))
         for col in ["registry_start", "registry_end_exclusive"]:
             p[col] = dates(cov[col]).reindex(p.index)
+        if "region" in cov:
+            p["registry_region"] = cov.region.reindex(p.index)
         assert (p.registry_end_exclusive.dropna() > p.registry_start.dropna()).all()
     p["coverage_verified"] = p.registry_start.notna() & p.registry_end_exclusive.notna()
     ctx.save_participants(p)

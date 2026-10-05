@@ -16,7 +16,7 @@ except ImportError:  # progress bars are optional; plain log lines still show ea
 
 ID = "participant_id"
 # Data stages in build order (run by source_code/01_build_data.py).
-STAGES = ["participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus", "validate"]
+STAGES = ["coverage", "participants", "registry", "history", "self_report", "cohort", "inputs", "risk_factors", "pretrain_corpus", "validate"]
 ROOT = Path(__file__).resolve().parents[2]  # project root (source_code/lib/common.py)
 CHUNK = 10000
 START = time.time()

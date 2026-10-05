@@ -1,6 +1,7 @@
 """Step 1 · Build the research data: cohorts, labels, model inputs, pretraining corpus, validation.
 
 Stages (implementation in source_code/lib/data_*.py), in order:
+  coverage        cancer-registry coverage per participant: recruitment centre -> country -> verified dates
   participants    study base population, birth/sex/death/loss, registry coverage, fixed 70/15/15 split
   registry        cancer registry: pair date and code per Instance, first malignancy and its sites
   history         first-occurrence + inpatient ICD-10 codes -> earliest reliable date per code

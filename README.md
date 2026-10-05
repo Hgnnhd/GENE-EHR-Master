@@ -52,6 +52,7 @@ source_code/
 
 | 阶段 | 作用 | 主要输出（`data/processed/`） |
 |---|---|---|
+| `coverage` | 按招募评估中心所在国家（英格兰/苏格兰/威尔士）赋予逐人癌症登记覆盖起止日期；日期须人工核实后填入 `configs/registry_coverage.json`，见[运行命令](docs/experiment_commands.md#核实登记覆盖正式结果的前提) | `registry_coverage.csv` |
 | `participants` | 研究母体：招募、性别、出生月、死亡/失访、登记覆盖；固定 70/15/15 划分及预训练角色 | `participants` |
 | `registry` | 癌症登记按 Instance 配对日期与编码，派生首次恶性肿瘤日期与癌种集合 | `cancer_events` |
 | `history` | 首次发生 + 住院诊断 → 每人每个 ICD-10 三级码的最早可靠日期；住院既往癌 | `events` |
