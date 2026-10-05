@@ -14,7 +14,7 @@ from .model_data import (SITE_KEYS, NodeData, check_build, collate, embedding_le
                          require_labels, run_name, survival_setup, variant_name, write_predictions,
                          year_bin)
 from .model_nets import build_model, init_output_bias
-from .model_targets import log_prior
+from .model_targets import log_prior, single_name, single_site_targets
 from .model_training import fit_competing_risk, loader, macro_auroc, pick_device, predict, seed_everything
 
 
@@ -26,6 +26,11 @@ def run(args):
     if variant != "main" and not mcfg.get("pretrain"):
         raise SystemExit(f"--pretrain-variant {variant} only applies to pretrained models, not {args.model}")
     name = run_name(args.model, variant)
+    site = getattr(args, "single_site", None)
+    if site:
+        if site not in SITE_KEYS:
+            raise SystemExit(f"unknown site {site}; choose from {', '.join(SITE_KEYS)}")
+        name = single_name(name, site)
     check_build(args.output)
     banner(f"Training {name} (labels: {mode})")
     device = pick_device(args.device)  # before any CUDA call
@@ -33,6 +38,12 @@ def run(args):
     horizon, n_bins = survival_setup(cfg, args.config)
     data = NodeData(args.output, args.report, mode, cfg["max_len"], horizon, n_bins)
     require_labels(data)
+    labels = data.labels
+    if site:  # ablation: this site against all other first events, same encoder and training
+        data.targets = single_site_targets(data.targets, site)
+        labels = np.full_like(data.labels, np.nan)
+        labels[:, SITE_KEYS.index(site)] = data.labels[:, SITE_KEYS.index(site)]
+        log(f"single-site model for {site}: outcomes = no event | {site} | other first cancer | death")
     tcfg = cfg["train"]
     known = data.targets["known"]
     train_rows = data.rows("train")[known[data.rows("train")]]
@@ -60,15 +71,18 @@ def run(args):
     train = loader(data.dataset(train_rows), tcfg["batch_size"], True, cfg["num_workers"], collate, cfg["seed"])
     val = loader(data.dataset(val_rows), tcfg["batch_size"], False, cfg["num_workers"], collate)
     t0 = time.time()
-    history = fit_competing_risk(model, train, val, data.labels[val_rows], tcfg, lr, device, amp, out / "best.pt", out, f"Training {name} (labels: {mode})")
+    history = fit_competing_risk(model, train, val, labels[val_rows], tcfg, lr, device, amp, out / "best.pt", out, f"Training {name} (labels: {mode})")
     eval_rows = np.concatenate([data.rows("validation"), data.rows("test")])
     cif, _ = predict(model, loader(data.dataset(eval_rows), tcfg["batch_size"], False, cfg["num_workers"], collate), device, amp)
     sites = len(SITE_KEYS)
+    if site:  # only this site's cumulative incidence is a prediction; leave the others empty
+        cif[:, :, [k for k in range(sites) if SITE_KEYS[k] != site]] = np.nan
     by_year = {year: cif[:, year_bin(year, horizon, n_bins), :sites] for year in cfg["survival"]["report_years"]}
     test = data.split[eval_rows] == "test"
-    test_auc = macro_auroc(cif[test, -1, :sites], data.labels[eval_rows][test])
+    test_auc = macro_auroc(np.nan_to_num(cif[test, -1, :sites]), labels[eval_rows][test])
     write_predictions(out, data, eval_rows, cif[:, -1, :sites],
                       {"model": name, "label_mode": mode, "pretrain_variant": variant if mcfg.get("pretrain") else None,
+                       "single_site": site,
                        "output": "competing_risk", "horizon_years": horizon, "n_bins": n_bins, "config": mcfg,
                        "train": tcfg, "history": history, "minutes": round((time.time() - t0) / 60, 1)}, cif=by_year)
     log(f"{name}: test macro AUROC (complete follow-up, horizon) {test_auc:.4f}; predictions -> {out / 'predictions.parquet'}")

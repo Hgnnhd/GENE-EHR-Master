@@ -316,3 +316,50 @@ def test_pretraining_curves_and_resume(processed, tmp_path):
     step("02_pretrain").run(args(base, model="medbert", resume=True))
     resumed = json.loads((out / "history.json").read_text())
     assert [h["epoch"] for h in resumed] == [1, 2, 3, 4] and resumed[:2] == first
+
+
+def test_single_site_targets():
+    from source_code.lib.model_targets import single_site_targets
+    sexes = np.array(["Female", "Male", "Female", "Female"])
+    cause = np.zeros((4, len(CAUSES)), dtype=bool)
+    cause[0, SITE_KEYS.index("lung")] = True                                   # the site itself
+    cause[1, SITE_KEYS.index("prostate")] = True                               # another target site -> other cancer
+    cause[2, [SITE_KEYS.index("lung"), SITE_KEYS.index("breast")]] = True      # same day: lung + breast
+    cause[3, CAUSES.index("death")] = True
+    t = single_site_targets({"cause": cause, "applicable": applicable_classes(sexes), "known": np.ones(4, bool),
+                             "time": np.ones(4)}, "lung")
+    lung, other, death = SITE_KEYS.index("lung"), CAUSES.index("other_cancer"), CAUSES.index("death")
+    assert t["cause"][0, lung] and not t["cause"][0, other]
+    assert t["cause"][1, other] and t["cause"][1].sum() == 1
+    assert t["cause"][2, lung] and t["cause"][2, other]
+    assert t["cause"][3, death] and t["cause"][3].sum() == 1
+    allowed = {0, 1 + lung, 1 + other, 1 + death}
+    assert all(t["applicable"][:, k].any() == (k in allowed) for k in range(N_CLASSES))
+
+
+def test_single_site_ablation(processed):
+    step("03_train_models").run(args(processed, model="ehr_transformer", no_evaluate=True))
+    step("03_train_models").run(args(processed, model="ehr_transformer", single_site="lung,breast", no_evaluate=True))
+    pred = pd.read_parquet(processed.output / "models/verified/ehr_transformer__single_lung/predictions.parquet")
+    assert pred.prob_lung.notna().all() and pred.prob_breast.isna().all() and pred.cif_colorectal_3y.isna().all()
+    meta = json.loads((processed.output / "models/verified/ehr_transformer__single_breast/meta.json").read_text())
+    assert meta["single_site"] == "breast"
+    step("lib.model_evaluate").run(args(processed, split=None, bootstrap=0))
+    metrics = pd.read_csv(processed.report / "models/verified/metrics.csv")
+    single = metrics.loc[metrics.model.eq("ehr_transformer__single")]
+    assert set(single.site) == {"lung", "breast"} and set(single.run) == {"ehr_transformer__single_lung", "ehr_transformer__single_breast"}
+    table = pd.read_csv(processed.report / "models/verified/joint_vs_single.csv")
+    assert set(table.site) == {"lung", "breast"} and np.allclose(table.difference, table.auroc_joint - table.auroc_single)
+    with pytest.raises(SystemExit, match="already per site"):
+        step("03_train_models").run(args(processed, model="xgboost", single_site="lung", no_evaluate=True))
+
+
+def test_single_site_job_plan(processed):
+    from source_code.lib.scheduler import plan
+    cfg = json.loads(processed.model_config.read_text())
+    a = args(processed, repretrain=True, pretrain_variant=None, sites=["lung", "breast"])
+    jobs = {j.name: j for j in plan(cfg, a, "verified", ["ehr_transformer", "gru"])}
+    assert set(jobs) == {"pretrain_ehr_transformer", "train_ehr_transformer__single_lung", "train_ehr_transformer__single_breast",
+                         "train_gru__single_lung", "train_gru__single_breast"}
+    assert jobs["train_ehr_transformer__single_lung"].after == {"pretrain_ehr_transformer"}
+    assert jobs["train_gru__single_breast"].extra[-2:] == ["--single-site", "breast"]

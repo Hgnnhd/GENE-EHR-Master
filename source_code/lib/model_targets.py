@@ -81,6 +81,29 @@ def competing_targets(samples, mode, years):
             "applicable": applicable_classes(samples.sex)}
 
 
+def single_site_targets(targets, site):
+    """Targets for a single-site model (ablation of joint training).
+
+    Outcomes collapse to: no event | `site` | other first cancer (any other target site,
+    other or unknown primary) | death. The other target-site classes are made inapplicable,
+    so the same 13-class head trains as a 4-class competing-risk model.
+    """
+    j = SITE_KEYS.index(site)
+    cause = targets["cause"]
+    collapsed = np.zeros_like(cause)
+    collapsed[:, j] = cause[:, j]
+    others = [k for k in range(len(SITE_KEYS)) if k != j] + [OTHER]
+    collapsed[:, OTHER] = cause[:, others].any(1)
+    collapsed[:, DEATH] = cause[:, DEATH]
+    applicable = targets["applicable"].copy()
+    applicable[:, [1 + k for k in range(len(SITE_KEYS)) if k != j]] = False
+    return {**targets, "cause": collapsed, "applicable": applicable}
+
+
+def single_name(name, site):
+    return f"{name}__single_{site}"
+
+
 def log_prior(targets, event_bin, survived, n_bins, rows):
     """(bins, classes) log of the empirical outcome distribution per time bin among those entering it.
 

@@ -70,6 +70,14 @@ python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models classical     
 
 评估（`04_evaluate.py`）：测试集逐模型 × 预测点 × 癌种 × 年份（1、3、5 年；二分类基线只有 5 年）计算删失加权（IPCW）的时间依赖 AUROC（病例 = 到该年该癌种为首发恶性肿瘤；对照 = 到该年无事件或先发生其他事件）及按参与者 bootstrap 95% CI、IPCW Brier 分数、与 Aalen–Johansen 观察累积发生率比较的校准截距。模型文件和逐人预测在 `data/processed/models/<标签模式>/<模型>/`（不入库），汇总指标在 `ccfa-workfiles/checks/cancer-cohort/models/<标签模式>/metrics.csv` 和 `auroc_<年>y.csv`。
 
+**联合训练与单癌种消融。** 主实验是 10 个癌种联合训练：一个模型、共享编码器、同一个竞争风险输出。消融实验用同样的结构为每个癌种单独训练一个模型，结局合并为"无事件 / 该癌种 / 其他首发癌（含其余 9 个目标癌种）/ 死亡"：
+
+```bash
+python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models ehr_transformer --single-site all
+```
+
+10 个单癌种结果在评估中合并为一行 `<模型>__single`，并输出 `joint_vs_single.csv`（逐预测点、逐癌种的联合与单独训练 5 年 AUROC 及差值）。传统基线本来就是每癌种一个模型，不参与该消融。
+
 **训练过程记录。** 预训练和微调每个 epoch 都会更新模型目录下的 `history.json`、`history.csv` 和 `training_curves.png`。预训练记录掩码代码的损失、top-1/top-5 准确率、困惑度和学习率；验证集的掩码位置固定，各 epoch 可直接比较。微调记录竞争风险负对数似然、验证集 AUROC 和学习率。预训练默认最多 100 个 epoch、早停耐心 10（`configs/models.json` 的 `pretrain`）；每个 epoch 保存 `last.pt`，中断后或调大 epoch 数后可用 `02_pretrain.py --resume` 接着训练。
 
 **预训练版本。** `--pretrain-variant main`（默认，方案 A：训练组 2016 年前代码）或 `strict_2011`（方案 B：训练组 2011 年前代码，敏感性分析），定义在 `configs/models.json` 的 `pretrain_variants`。B 只对三个预训练模型重做，权重在 `models/pretrained/<版本>/`，微调结果以 `<模型>__pt_strict_2011` 与主结果并列评估：

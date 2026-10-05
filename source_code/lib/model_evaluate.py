@@ -11,6 +11,7 @@ Writes metrics.csv and auroc_<year>y.csv under <report>/models/<label_mode>/.
 """
 import json
 from pathlib import Path
+import re
 
 import pandas as pd
 
@@ -30,6 +31,30 @@ def outcome_table(data_dir, mode, horizon):
         out[f"cause_{site}"] = t["cause"][:, j]
         out[f"applies_{site}"] = t["applicable"][:, 1 + j]
     return out
+
+
+SINGLE = re.compile(r"__single_[a-z_]+$")  # the 10 single-site runs of a model form one row "<model>__single"
+
+
+def joint_vs_single(metrics, out, horizon):
+    """Ablation table: per site, AUROC at the horizon of the joint model vs its single-site models."""
+    single = sorted({m for m in metrics.model if m.endswith("__single")})
+    rows = []
+    for name in single:
+        joint = name[:-len("__single")]
+        if joint not in set(metrics.model):
+            continue
+        m = metrics.loc[metrics.year.eq(horizon) & metrics.model.isin([joint, name])]
+        t = m.pivot_table(index=["landmark", "site"], columns="model", values="auroc").dropna()
+        for (landmark, site), r in t.iterrows():
+            rows.append({"model": joint, "landmark": landmark, "site": site, "auroc_joint": r[joint],
+                         "auroc_single": r[name], "difference": r[joint] - r[name]})
+    if rows:
+        table = pd.DataFrame(rows)
+        table.round(4).to_csv(out / "joint_vs_single.csv", index=False)
+        with pd.option_context("display.width", 200):
+            say(f"\nJoint vs single-site training, IPCW AUROC at {horizon} years (difference = joint - single):")
+            say(table.round(3).to_string(index=False))
 
 
 def run(args):
@@ -66,9 +91,10 @@ def run(args):
                     stats = competing_metrics(g_site.time.to_numpy(), g_site[f"cause_{site}"].to_numpy(),
                                               g_site.any_event.to_numpy(), g_site[col].to_numpy(),
                                               horizon_days(year), horizon_days(horizon), bootstrap, seed=0)
-                    rows.append({"model": run_dir.name, "landmark": str(pd.Timestamp(landmark).date()), "site": site,
+                    rows.append({"run": run_dir.name, "model": SINGLE.sub("__single", run_dir.name), "landmark": str(pd.Timestamp(landmark).date()), "site": site,
                                  "name": names[site], "year": year, "output": meta.get("output", "binary"), **stats})
     metrics = pd.DataFrame(rows)
+    joint_vs_single(metrics, results_dir(args.report, mode), horizon)
     out = results_dir(args.report, mode)
     metrics.round(5).to_csv(out / "metrics.csv", index=False)
     with pd.option_context("display.width", 220, "display.max_columns", 20):
