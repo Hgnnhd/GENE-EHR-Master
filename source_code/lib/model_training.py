@@ -2,6 +2,7 @@
 import json
 import math
 import os
+from pathlib import Path
 import re
 import time
 
@@ -13,6 +14,7 @@ from .common import log, progress
 from .model_data import SITE_KEYS
 from .model_targets import N_CLASSES
 from .model_metrics import auroc
+from .plots import FINETUNE_PANELS, PRETRAIN_PANELS, plot_history
 
 
 def seed_everything(seed):
@@ -125,7 +127,7 @@ def macro_auroc(probs, labels):
     return float(np.mean(values)) if values else float("nan")
 
 
-def fit_competing_risk(model, train_loader, val_loader, val_labels, cfg, lr, device, amp, ckpt, history_path):
+def fit_competing_risk(model, train_loader, val_loader, val_labels, cfg, lr, device, amp, ckpt, out_dir, title):
     """Competing-risk NLL; early stopping on validation NLL. The validation macro AUROC of the
     horizon cumulative incidence against complete-follow-up binary labels is logged for monitoring."""
     model.to(device)
@@ -151,7 +153,8 @@ def fit_competing_risk(model, train_loader, val_loader, val_labels, cfg, lr, dev
         cif, val_loss = predict(model, val_loader, device, amp, "validate")
         val_auc = macro_auroc(cif[:, -1, :len(SITE_KEYS)], val_labels)
         history.append({"epoch": epoch, "train_nll": total / max(n, 1), "val_nll": val_loss,
-                        "val_macro_auroc_horizon": val_auc, "seconds": round(time.time() - t0, 1)})
+                        "val_macro_auroc_horizon": val_auc, "lr": sched.get_last_lr()[0],
+                        "seconds": round(time.time() - t0, 1)})
         improved = val_loss < best
         if improved:
             best, bad = val_loss, 0
@@ -160,7 +163,7 @@ def fit_competing_risk(model, train_loader, val_loader, val_labels, cfg, lr, dev
             bad += 1
         log(f"epoch {epoch}: train NLL {total / max(n, 1):.4f} | val NLL {val_loss:.4f} | val macro AUROC (horizon) {val_auc:.4f}"
             + ("  * best" if improved else f"  (no gain {bad}/{cfg['patience']})"))
-        history_path.write_text(json.dumps(history, indent=2))
+        save_history(history, out_dir, FINETUNE_PANELS, title, min(history, key=lambda h: h["val_nll"])["epoch"])
         if bad >= cfg["patience"]:
             log("early stopping")
             break
@@ -168,18 +171,41 @@ def fit_competing_risk(model, train_loader, val_loader, val_labels, cfg, lr, dev
     return history
 
 
-def fit_mlm(model, train_loader, val_loader, cfg, device, amp, ckpt, history_path):
-    """Masked-code pretraining; early stopping on validation MLM loss."""
+def save_history(history, directory, panels, title, best_epoch):
+    """history.json + history.csv + training_curves.png, rewritten after every epoch."""
+    directory = Path(directory)
+    (directory / "history.json").write_text(json.dumps(history, indent=2))
+    keys = list(dict.fromkeys(k for h in history for k in h))
+    lines = [",".join(keys)] + [",".join("" if h.get(k) is None else str(h[k]) for k in keys) for h in history]
+    (directory / "history.csv").write_text("\n".join(lines) + "\n")
+    plot_history(history, panels, directory / "training_curves.png", title, best_epoch)
+
+
+def fit_mlm(model, train_loader, val_batches, cfg, device, amp, out_dir, title, resume=False):
+    """Masked-code pretraining; early stopping on validation MLM loss.
+
+    val_batches: a fixed list of masked validation batches (same masks every epoch, so the
+    validation loss is comparable across epochs). Writes encoder.pt (best), last.pt (resume
+    state) and the per-epoch history/curves into out_dir.
+    """
     model.to(device)
     steps = cfg["epochs"] * len(train_loader)
     opt, sched = optimizer_and_schedule(model, cfg["lr"], cfg["weight_decay"], steps, cfg["warmup_frac"])
     lossf = nn.CrossEntropyLoss(ignore_index=-100)
-    best, bad, history = float("inf"), 0, []
+    best, bad, history, first = float("inf"), 0, [], 1
+    last = Path(out_dir) / "last.pt"
+    if resume and last.exists():
+        state = torch.load(last, map_location=device, weights_only=False)
+        model.load_state_dict(state["model"])
+        opt.load_state_dict(state["optimizer"])
+        sched.load_state_dict(state["scheduler"])
+        best, bad, history, first = state["best"], state["bad"], state["history"], state["epoch"] + 1
+        log(f"resumed from {last} after epoch {state['epoch']} (best val loss {best:.4f})")
 
-    def run(data_loader, train, desc):
+    def run(batches, train, desc, total_batches=None):
         model.train(train)
-        total, n, correct, count = 0.0, 0, 0, 0
-        bar = progress(data_loader, desc, unit="batch", leave=False)
+        total, n, count, top1, top5 = 0.0, 0, 0, 0, 0
+        bar = progress(batches, desc, unit="batch", leave=False, total=total_batches)
         for batch in bar:
             batch = to_device(batch, device)
             with torch.set_grad_enabled(train), autocast(device, amp):
@@ -191,29 +217,40 @@ def fit_mlm(model, train_loader, val_loader, cfg, device, amp, ckpt, history_pat
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt.step()
                 sched.step()
-            keep = batch["mlm_labels"].ne(-100)
-            correct += (logits.argmax(-1)[keep] == batch["mlm_labels"][keep]).sum().item()
-            count += keep.sum().item()
+            with torch.no_grad():
+                keep = batch["mlm_labels"].ne(-100)
+                target = batch["mlm_labels"][keep]
+                ranked = logits[keep].topk(5, dim=-1).indices
+                top1 += (ranked[:, 0] == target).sum().item()
+                top5 += (ranked == target[:, None]).any(1).sum().item()
+                count += int(keep.sum())
             total, n = total + loss.item(), n + 1
             if hasattr(bar, "set_postfix") and n % 50 == 0:
-                bar.set_postfix(loss=f"{total / n:.3f}")
-        return total / max(n, 1), correct / max(count, 1)
+                bar.set_postfix(loss=f"{total / n:.3f}", acc=f"{top1 / max(count, 1):.3f}")
+        return total / max(n, 1), top1 / max(count, 1), top5 / max(count, 1)
 
-    for epoch in range(1, cfg["epochs"] + 1):
+    for epoch in range(first, cfg["epochs"] + 1):
         t0 = time.time()
-        train_loss, train_acc = run(train_loader, True, f"epoch {epoch}/{cfg['epochs']}")
-        val_loss, val_acc = run(val_loader, False, "validate")
-        history.append({"epoch": epoch, "train_mlm_loss": train_loss, "train_mlm_acc": train_acc,
-                        "val_mlm_loss": val_loss, "val_mlm_acc": val_acc, "seconds": round(time.time() - t0, 1)})
+        train_loss, train_acc, train_top5 = run(train_loader, True, f"epoch {epoch}/{cfg['epochs']}")
+        val_loss, val_acc, val_top5 = run(val_batches, False, "validate", len(val_batches))
         improved = val_loss < best
         if improved:
             best, bad = val_loss, 0
-            torch.save(model.state_dict(), ckpt)
+            torch.save(model.state_dict(), Path(out_dir) / "encoder.pt")
         else:
             bad += 1
-        log(f"epoch {epoch}: train MLM loss {train_loss:.3f} acc {train_acc:.3f} | val loss {val_loss:.3f} acc {val_acc:.3f}"
+        history.append({"epoch": epoch, "train_mlm_loss": train_loss, "val_mlm_loss": val_loss,
+                        "train_mlm_acc": train_acc, "val_mlm_acc": val_acc,
+                        "train_mlm_top5": train_top5, "val_mlm_top5": val_top5,
+                        "val_perplexity": math.exp(min(val_loss, 50)), "lr": sched.get_last_lr()[0],
+                        "best": improved, "seconds": round(time.time() - t0, 1)})
+        best_epoch = min(history, key=lambda h: h["val_mlm_loss"])["epoch"]
+        save_history(history, out_dir, PRETRAIN_PANELS, title, best_epoch)
+        torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(), "scheduler": sched.state_dict(),
+                    "epoch": epoch, "best": best, "bad": bad, "history": history}, last)
+        log(f"epoch {epoch}: loss {train_loss:.3f}/{val_loss:.3f} | top-1 {train_acc:.3f}/{val_acc:.3f} | "
+            f"top-5 {train_top5:.3f}/{val_top5:.3f} (train/val) | lr {history[-1]['lr']:.2e} | {history[-1]['seconds']:.0f}s"
             + ("  * best" if improved else f"  (no gain {bad}/{cfg['patience']})"))
-        history_path.write_text(json.dumps(history, indent=2))
         if bad >= cfg["patience"]:
             log("early stopping")
             break

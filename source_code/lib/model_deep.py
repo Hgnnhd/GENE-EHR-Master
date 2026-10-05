@@ -60,7 +60,7 @@ def run(args):
     train = loader(data.dataset(train_rows), tcfg["batch_size"], True, cfg["num_workers"], collate, cfg["seed"])
     val = loader(data.dataset(val_rows), tcfg["batch_size"], False, cfg["num_workers"], collate)
     t0 = time.time()
-    history = fit_competing_risk(model, train, val, data.labels[val_rows], tcfg, lr, device, amp, out / "best.pt", out / "history.json")
+    history = fit_competing_risk(model, train, val, data.labels[val_rows], tcfg, lr, device, amp, out / "best.pt", out, f"Training {name} (labels: {mode})")
     eval_rows = np.concatenate([data.rows("validation"), data.rows("test")])
     cif, _ = predict(model, loader(data.dataset(eval_rows), tcfg["batch_size"], False, cfg["num_workers"], collate), device, amp)
     sites = len(SITE_KEYS)

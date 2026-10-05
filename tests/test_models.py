@@ -295,3 +295,24 @@ def test_ipcw_metrics_recover_truth_under_censoring():
     assert cens["auroc"] == pytest.approx(full["auroc"], abs=0.01)
     assert cens["observed_cif"] == pytest.approx(full["observed_cif"], abs=0.01)
     assert aalen_johansen(time, event & (first == 0), event, h) > (event & (first == 0)).mean() + 0.02  # naive is biased
+
+
+def test_pretraining_curves_and_resume(processed, tmp_path):
+    """Every epoch writes history.csv / training_curves.png; --resume continues from last.pt."""
+    import shutil
+    base = args(processed, model_config=tmp_path / "models.json")
+    cfg = json.loads(processed.model_config.read_text())
+    cfg["pretrain"].update({"epochs": 2, "patience": 10})
+    base.model_config.write_text(json.dumps(cfg))
+    out = processed.output / "models/pretrained/main/medbert"
+    shutil.rmtree(out, ignore_errors=True)
+    step("02_pretrain").run(args(base, model="medbert"))
+    first = json.loads((out / "history.json").read_text())
+    assert [h["epoch"] for h in first] == [1, 2]
+    assert {"val_mlm_top5", "val_perplexity", "lr"} <= set(first[0]) and (out / "training_curves.png").stat().st_size > 10_000
+    assert len((out / "history.csv").read_text().strip().splitlines()) == 3
+    cfg["pretrain"]["epochs"] = 4
+    base.model_config.write_text(json.dumps(cfg))
+    step("02_pretrain").run(args(base, model="medbert", resume=True))
+    resumed = json.loads((out / "history.json").read_text())
+    assert [h["epoch"] for h in resumed] == [1, 2, 3, 4] and resumed[:2] == first
