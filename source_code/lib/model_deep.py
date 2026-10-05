@@ -25,7 +25,11 @@ def run(args):
     variant = variant_name(cfg, getattr(args, "pretrain_variant", None))
     if variant != "main" and not mcfg.get("pretrain"):
         raise SystemExit(f"--pretrain-variant {variant} only applies to pretrained models, not {args.model}")
-    name = run_name(args.model, variant)
+    scratch = getattr(args, "no_pretrain", False)
+    if scratch and (not mcfg.get("pretrain") or variant != "main"):
+        raise SystemExit("--no-pretrain applies to pretrained models (behrt, medbert, ehr_transformer) without --pretrain-variant")
+    pretrained = bool(mcfg.get("pretrain")) and not scratch
+    name = run_name(args.model, variant, scratch)
     site = getattr(args, "single_site", None)
     if site:
         if site not in SITE_KEYS:
@@ -55,7 +59,9 @@ def run(args):
     model = build_model(args.model, mcfg, data.vocab_size, embedding_len(cfg), n_bins)
     init_output_bias(model, log_prior(data.targets, data.event_bin, data.survived, n_bins, train_rows))
     lr = mcfg.get("lr", tcfg["lr"])
-    if mcfg.get("pretrain"):
+    if scratch:
+        log("--no-pretrain: encoder starts from random initialisation (pretraining ablation)")
+    if pretrained:
         weights = pretrained_dir(args.output, variant, args.model) / "encoder.pt"
         if not weights.exists():
             raise SystemExit(f"{weights} missing: run python source_code/02_pretrain.py --model {args.model} "
@@ -81,7 +87,7 @@ def run(args):
     test = data.split[eval_rows] == "test"
     test_auc = macro_auroc(np.nan_to_num(cif[test, -1, :sites]), labels[eval_rows][test])
     write_predictions(out, data, eval_rows, cif[:, -1, :sites],
-                      {"model": name, "label_mode": mode, "pretrain_variant": variant if mcfg.get("pretrain") else None,
+                      {"model": name, "label_mode": mode, "pretrain_variant": variant if pretrained else None, "no_pretrain": scratch,
                        "single_site": site,
                        "output": "competing_risk", "horizon_years": horizon, "n_bins": n_bins, "config": mcfg,
                        "train": tcfg, "history": history, "minutes": round((time.time() - t0) / 60, 1)}, cif=by_year)

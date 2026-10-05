@@ -363,3 +363,25 @@ def test_single_site_job_plan(processed):
                          "train_gru__single_lung", "train_gru__single_breast"}
     assert jobs["train_ehr_transformer__single_lung"].after == {"pretrain_ehr_transformer"}
     assert jobs["train_gru__single_breast"].extra[-2:] == ["--single-site", "breast"]
+
+
+def test_no_pretrain_ablation(processed):
+    step("03_train_models").run(args(processed, model="ehr_transformer", no_pretrain=True, no_evaluate=True))
+    meta = json.loads((processed.output / "models/verified/ehr_transformer__no_pretrain/meta.json").read_text())
+    assert meta["no_pretrain"] is True and meta["pretrain_variant"] is None
+    for bad in [dict(model="gru", no_pretrain=True), dict(model="behrt", no_pretrain=True, pretrain_variant="strict_2011")]:
+        with pytest.raises(SystemExit, match="--no-pretrain applies"):
+            step("03_train_models").run(args(processed, no_evaluate=True, **bad))
+    from source_code.lib.scheduler import plan
+    cfg = json.loads(processed.model_config.read_text())
+    jobs = plan(cfg, args(processed, repretrain=True, pretrain_variant=None, no_pretrain=True), "verified", ["behrt"])
+    assert [j.name for j in jobs] == ["train_behrt__no_pretrain"] and "--no-pretrain" in jobs[0].extra
+
+
+def test_main_experiment_script_steps():
+    script = (ROOT / "run_main_experiment.sh").read_text()
+    for step_name in ["data", "pretrain", "pretrain_b", "main", "finetune", "scratch", "ablation_pretrain",
+                      "ablation_single", "sensitivity_b", "evaluate"]:
+        assert f"\n{step_name}() {{" in script or f"\n{step_name}()   {{" in script or f"\n{step_name}() " in script, step_name
+    import subprocess
+    assert subprocess.run(["bash", "-n", str(ROOT / "run_main_experiment.sh")]).returncode == 0

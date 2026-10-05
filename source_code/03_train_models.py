@@ -12,6 +12,11 @@ Models (configs/models.json):
   python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --label-mode provisional_observed  # debugging only
   python source_code/03_train_models.py --gpus 0,1,2 --pretrain-variant strict_2011   # sensitivity B (pretrained models only)
   python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models ehr_transformer --single-site all   # joint-training ablation
+  python source_code/03_train_models.py --gpus 0,1,2 --models ehr_transformer,behrt,medbert --no-pretrain  # pretraining ablation
+
+Pretrained models (behrt, medbert, ehr_transformer) load data/processed/models/pretrained/<variant>/<model>/encoder.pt
+and fine-tune with finetune_lr; --no-pretrain trains them from scratch with lr instead.
+See run_main_experiment.sh for the whole experiment in order.
 
 With --gpus (or no --model) jobs run in parallel as subprocesses, pretraining first where
 weights are missing; logs go to logs/<job>.log and a status table is printed. Afterwards
@@ -83,6 +88,11 @@ def run(args):
             names = [n for n in names if n not in skipped]
             if skipped:
                 say(f"single-site ablation: classical baselines are already per site; skipping {', '.join(skipped)}")
+        if getattr(args, "no_pretrain", False):
+            skipped = [n for n in names if not cfg["deep_models"].get(n, {}).get("pretrain")]
+            names = [n for n in names if n not in skipped]
+            if skipped:
+                say(f"--no-pretrain: only models that are normally pretrained apply; skipping {', '.join(skipped)}")
         if variant_name(cfg, getattr(args, "pretrain_variant", None)) != "main":
             skipped = [n for n in names if not cfg["deep_models"].get(n, {}).get("pretrain")]
             names = [n for n in names if n not in skipped]
@@ -102,6 +112,8 @@ def main():
     ap.add_argument("--models", help="subset for the parallel run: names, 'classical' or 'all' (default all)")
     ap.add_argument("--gpus", help="GPU ids for the parallel run, e.g. 0,1,2,3,4,5 (default: CPU, one job at a time)")
     ap.add_argument("--repretrain", action="store_true", help="rerun 02_pretrain.py even if weights exist")
+    ap.add_argument("--no-pretrain", action="store_true",
+                    help="pretraining ablation: train behrt / medbert / ehr_transformer from random initialisation")
     ap.add_argument("--single-site", help="ablation of joint training: one model per site ('all' or comma-separated sites)")
     ap.add_argument("--no-evaluate", action="store_true", help="skip 04_evaluate afterwards")
     ap.add_argument("--bootstrap", type=int, help="bootstrap replicates for evaluation")

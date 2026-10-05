@@ -63,8 +63,11 @@ def pretrained_dir(data_dir, variant, model):
     return model_dir(data_dir, f"pretrained/{variant}", model)
 
 
-def run_name(model, variant):
-    """Output name of a fine-tuned model; non-main pretraining variants get a suffix."""
+def run_name(model, variant, scratch=False):
+    """Output name of a trained model: non-main pretraining variants and runs of a pretrained
+    model trained from random initialisation (--no-pretrain) get a suffix."""
+    if scratch:
+        return f"{model}__no_pretrain"
     return model if variant == "main" else f"{model}__pt_{variant}"
 
 

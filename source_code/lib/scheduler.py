@@ -36,17 +36,19 @@ def plan(cfg, args, mode, names):
     common = ["--output", str(args.output), "--report", str(args.report), "--config", str(args.config),
               "--model-config", str(args.model_config), "--label-mode", mode, "--pretrain-variant", variant, "--no-evaluate"]
     sites = getattr(args, "sites", None) or [None]  # single-site ablation: one job per model x site
+    scratch = getattr(args, "no_pretrain", False)    # pretraining ablation: no pretraining jobs, no weights loaded
     jobs = []
     for name in names:
         after = []
-        if cfg["deep_models"].get(name, {}).get("pretrain"):
+        if cfg["deep_models"].get(name, {}).get("pretrain") and not scratch:
             exists = (pretrained_dir(args.output, variant, name) / "encoder.pt").exists()
             if args.repretrain or not exists:
                 jobs.append(Job(f"pretrain_{run_name(name, variant)}", "02_pretrain.py", common[:-1] + ["--model", name]))
                 after = [f"pretrain_{run_name(name, variant)}"]
         for site in sites:
-            label = run_name(name, variant) if site is None else single_name(run_name(name, variant), site)
-            extra = [] if site is None else ["--single-site", site]
+            base = run_name(name, variant, scratch)
+            label = base if site is None else single_name(base, site)
+            extra = ([] if site is None else ["--single-site", site]) + (["--no-pretrain"] if scratch else [])
             jobs.append(Job(f"train_{label}", "03_train_models.py", common + ["--model", name] + extra, after))
     return jobs
 

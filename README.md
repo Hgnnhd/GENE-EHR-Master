@@ -6,6 +6,24 @@
 
 ## 四个主要步骤
 
+完整实验按顺序写在 [`run_main_experiment.sh`](run_main_experiment.sh)，每一步一个命令：
+
+```bash
+bash run_main_experiment.sh data                    # 1. 数据构建与校验
+bash run_main_experiment.sh pretrain                # 2. 预训练 ehr_transformer / behrt / medbert（方案 A，各占一张卡）
+bash run_main_experiment.sh main                    # 3. 主实验：主模型 + 全部基线；预训练模型载入权重后微调
+bash run_main_experiment.sh ablation_pretrain       #    消融：同样三个模型不载入预训练、从零训练
+bash run_main_experiment.sh ablation_single         #    消融：主模型逐癌种单独训练
+bash run_main_experiment.sh pretrain_b sensitivity_b  # 敏感性 B：2011 年前语料预训练 + 微调
+bash run_main_experiment.sh evaluate                # 4. 评估全部模型
+MODEL=behrt GPU=2 bash run_main_experiment.sh finetune   # 单个模型：载入预训练权重
+MODEL=behrt GPU=2 bash run_main_experiment.sh scratch    # 单个模型：不载入、从零训练
+```
+
+环境变量：`GPUS`（默认 `0,1,2,3,4,5`）、`LABEL_MODE`（默认 `verified`）、`PY`、`RESUME=1`（预训练续训）。日志在 `logs/`。
+
+下面是各脚本的直接用法：
+
 ```bash
 python -m pip install -e ".[models]"     # 服务器已有匹配 CUDA 的 torch 时只补装其余依赖
 python source_code/01_build_data.py                        # 1. 数据：人群、标签、模型输入、预训练语料、校验
