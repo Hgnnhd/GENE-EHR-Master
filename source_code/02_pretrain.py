@@ -1,12 +1,16 @@
 """Step 2 · Masked-code pretraining of the pretrained transformers (no labels used).
 
 Pretrains BEHRT, Med-BERT and the main ehr_transformer on train-split participants' codes
-before the pretraining cutoff; internal pretraining-validation participants drive early
-stopping. Weights go to data/processed/models/pretrained/<model>/encoder.pt.
-03_train_models.py runs this automatically when weights are missing.
+before the variant's cutoff (configs/models.json pretrain_variants):
+  main         codes before 2016-01-01 (analysis A, default)
+  strict_2011  codes before 2011-01-01 (sensitivity B: no information after the first landmark)
+Internal pretraining-validation participants drive early stopping. Weights go to
+data/processed/models/pretrained/<variant>/<model>/encoder.pt; 03_train_models.py runs this
+automatically when weights are missing.
 
   python source_code/02_pretrain.py --model ehr_transformer --device cuda:0
   python source_code/02_pretrain.py --model all --device cuda:0      # the three, one after another
+  python source_code/02_pretrain.py --model ehr_transformer --pretrain-variant strict_2011
 """
 from pathlib import Path
 

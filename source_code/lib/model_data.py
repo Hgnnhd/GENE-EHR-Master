@@ -36,7 +36,34 @@ def model_parser(description):
     ap.add_argument("--model-config", type=Path, default=ROOT / "configs/models.json")
     ap.add_argument("--label-mode", choices=LABEL_MODES, help="default: configs/models.json label_mode")
     ap.add_argument("--device", help="e.g. cuda, cuda:0, cpu (default: cuda if available)")
+    ap.add_argument("--pretrain-variant", help="pretraining corpus variant from configs/models.json pretrain_variants "
+                                               "(default: pretrain_variant, i.e. main)")
     return ap
+
+
+def variant_name(cfg, name=None):
+    name = name or cfg.get("pretrain_variant", "main")
+    if name not in cfg["pretrain_variants"]:
+        raise SystemExit(f"unknown pretrain variant {name}; choose from {', '.join(cfg['pretrain_variants'])}")
+    return name
+
+
+def variant_cutoff(cfg, cohort, name):
+    """Pretraining cutoff of a variant; it must lie within the corpus built by the data step."""
+    cutoff = pd.Timestamp(cfg["pretrain_variants"][name]["before"])
+    if cutoff > pd.Timestamp(cohort["pretrain_before"]):
+        raise SystemExit(f"variant {name} cutoff {cutoff.date()} is after the corpus cutoff {cohort['pretrain_before']} "
+                         "(configs/cohort.json); raise pretrain_before and rerun 01_build_data.py --from pretrain_corpus")
+    return cutoff
+
+
+def pretrained_dir(data_dir, variant, model):
+    return model_dir(data_dir, f"pretrained/{variant}", model)
+
+
+def run_name(model, variant):
+    """Output name of a fine-tuned model; non-main pretraining variants get a suffix."""
+    return model if variant == "main" else f"{model}__pt_{variant}"
 
 
 def check_build(data_dir):
@@ -187,7 +214,9 @@ class PretrainData:
         people = pd.read_parquet(data_dir / "participants.parquet", columns=[ID, "birth", "pretrain_role"])
         people = people.loc[people.pretrain_role.isin(["train", "validation"])].sort_values(ID).reset_index(drop=True)
         ev = pl.read_parquet(data_dir / "pretrain_events.parquet", columns=[ID, "code", "date"])
-        ev = ev.with_columns(pl.col("date").cast(pl.Datetime("us"))).sort([ID, "date", "code"]).with_columns(
+        ev = ev.with_columns(pl.col("date").cast(pl.Datetime("us"))).filter(pl.col("date") < cutoff)
+        self.n_events = ev.height
+        ev = ev.sort([ID, "date", "code"]).with_columns(
             (pl.lit(cutoff).cast(pl.Datetime("us")) - pl.col("date")).dt.total_days().alias("days_before"),
             (pl.col("date").rank("dense").over(ID) - 1).cast(pl.Int32).alias("day_index"))
         seq = ev.group_by(ID, maintain_order=True).agg(pl.col("code").alias("codes"), "days_before", "day_index")

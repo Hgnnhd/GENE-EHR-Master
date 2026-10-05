@@ -135,7 +135,7 @@ def test_forward_shapes(processed, name):
 
 def test_pipeline_pretrain_train_evaluate(processed):
     step("02_pretrain").run(args(processed, model="ehr_transformer"))
-    assert (processed.output / "models/pretrained/ehr_transformer/encoder.pt").exists()
+    assert (processed.output / "models/pretrained/main/ehr_transformer/encoder.pt").exists()
     for name in ["ehr_transformer", "gru", "retain", "logistic_regression", "random_forest", "lightgbm", "xgboost"]:
         step("03_train_models").run(args(processed, model=name, no_evaluate=True))
     step("lib.model_evaluate").run(args(processed, split=None, bootstrap=None))
@@ -169,3 +169,21 @@ def test_run_models_scheduler(processed, tmp_path):
     assert (tmp_path / "train_mlp.log").exists()
     metrics = pd.read_csv(processed.report / "models/provisional_observed/metrics.csv")
     assert set(metrics.model) == {"mlp", "lstm"}
+
+
+def test_pretrain_variant_strict_2011(processed):
+    """Sensitivity B: pretraining sees only codes before 2011 and fine-tuned outputs are kept apart."""
+    step("02_pretrain").run(args(processed, model="ehr_transformer"))
+    step("02_pretrain").run(args(processed, model="ehr_transformer", pretrain_variant="strict_2011"))
+    main = json.loads((processed.output / "models/pretrained/main/ehr_transformer/meta.json").read_text())
+    strict = json.loads((processed.output / "models/pretrained/strict_2011/ehr_transformer/meta.json").read_text())
+    assert strict["cutoff"] == "2011-01-01" and 0 < strict["events"] < main["events"]
+    corpus = pd.read_parquet(processed.output / "pretrain_events.parquet")
+    assert strict["events"] == int((corpus.date < pd.Timestamp("2011-01-01")).sum())
+    step("03_train_models").run(args(processed, model="ehr_transformer", pretrain_variant="strict_2011", no_evaluate=True))
+    meta = json.loads((processed.output / "models/verified/ehr_transformer__pt_strict_2011/meta.json").read_text())
+    assert meta["pretrain_variant"] == "strict_2011"
+    with pytest.raises(SystemExit, match="only applies to pretrained models"):
+        step("03_train_models").run(args(processed, model="gru", pretrain_variant="strict_2011", no_evaluate=True))
+    with pytest.raises(SystemExit, match="unknown pretrain variant"):
+        step("02_pretrain").run(args(processed, model="ehr_transformer", pretrain_variant="2020"))

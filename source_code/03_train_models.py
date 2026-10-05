@@ -10,6 +10,7 @@ Models (configs/models.json):
   python source_code/03_train_models.py --gpus 0,1 --models gru,ehr_transformer
   python source_code/03_train_models.py --model behrt --device cuda:0      # one model in this process
   python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --label-mode provisional_observed  # debugging only
+  python source_code/03_train_models.py --gpus 0,1,2 --pretrain-variant strict_2011   # sensitivity B (pretrained models only)
 
 With --gpus (or no --model) jobs run in parallel as subprocesses, pretraining first where
 weights are missing; logs go to logs/<job>.log and a status table is printed. Afterwards
@@ -24,8 +25,8 @@ if not __package__:  # allow `python source_code/03_train_models.py`
 
 import argparse
 
-from .lib.common import ROOT
-from .lib.model_data import load_config, model_parser
+from .lib.common import ROOT, say
+from .lib.model_data import load_config, model_parser, variant_name
 
 
 def model_names(cfg, text):
@@ -55,7 +56,13 @@ def run(args):
             raise SystemExit(f"unknown model {args.model}")
     else:
         from .lib.scheduler import schedule
-        names, failed = schedule(args, model_names(cfg, getattr(args, "models", None)))
+        names = model_names(cfg, getattr(args, "models", None))
+        if variant_name(cfg, getattr(args, "pretrain_variant", None)) != "main":
+            skipped = [n for n in names if not cfg["deep_models"].get(n, {}).get("pretrain")]
+            names = [n for n in names if n not in skipped]
+            if skipped:
+                say(f"pretrain variant {args.pretrain_variant}: only pretrained models apply; skipping {', '.join(skipped)}")
+        names, failed = schedule(args, names)
     if names and not getattr(args, "no_evaluate", False):
         from .lib.model_evaluate import run as evaluate
         evaluate(argparse.Namespace(**{**vars(args), "split": None, "bootstrap": getattr(args, "bootstrap", None)}))

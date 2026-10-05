@@ -12,7 +12,7 @@ import sys
 import time
 
 from .common import ROOT, say
-from .model_data import load_config, model_dir
+from .model_data import load_config, pretrained_dir, run_name, variant_name
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 
@@ -31,17 +31,18 @@ class Job:
 
 
 def plan(cfg, args, mode, names):
+    variant = variant_name(cfg, getattr(args, "pretrain_variant", None))
     common = ["--output", str(args.output), "--report", str(args.report), "--config", str(args.config),
-              "--model-config", str(args.model_config), "--label-mode", mode, "--no-evaluate"]
+              "--model-config", str(args.model_config), "--label-mode", mode, "--pretrain-variant", variant, "--no-evaluate"]
     jobs = []
     for name in names:
         after = []
         if cfg["deep_models"].get(name, {}).get("pretrain"):
-            exists = (model_dir(args.output, "pretrained", name) / "encoder.pt").exists()
+            exists = (pretrained_dir(args.output, variant, name) / "encoder.pt").exists()
             if args.repretrain or not exists:
-                jobs.append(Job(f"pretrain_{name}", "02_pretrain.py", common[:-1] + ["--model", name]))
-                after = [f"pretrain_{name}"]
-        jobs.append(Job(f"train_{name}", "03_train_models.py", common + ["--model", name], after))
+                jobs.append(Job(f"pretrain_{run_name(name, variant)}", "02_pretrain.py", common[:-1] + ["--model", name]))
+                after = [f"pretrain_{run_name(name, variant)}"]
+        jobs.append(Job(f"train_{run_name(name, variant)}", "03_train_models.py", common + ["--model", name], after))
     return jobs
 
 

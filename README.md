@@ -67,6 +67,12 @@ python source_code/03_train_models.py --gpus 0,1,2,3,4,5 --models classical     
 
 评估（`04_evaluate.py`）：测试集逐模型 × 预测点 × 癌种计算 AUROC（按参与者 bootstrap 95% CI）、AUPRC、Brier、校准截距与斜率。模型文件和逐人预测在 `data/processed/models/<标签模式>/<模型>/`（不入库），汇总指标在 `ccfa-workfiles/checks/cancer-cohort/models/<标签模式>/metrics.csv` 和 `auroc_table.csv`。
 
+**预训练版本。** `--pretrain-variant main`（默认，方案 A：训练组 2016 年前代码）或 `strict_2011`（方案 B：训练组 2011 年前代码，敏感性分析），定义在 `configs/models.json` 的 `pretrain_variants`。B 只对三个预训练模型重做，权重在 `models/pretrained/<版本>/`，微调结果以 `<模型>__pt_strict_2011` 与主结果并列评估：
+
+```bash
+python source_code/03_train_models.py --gpus 0,1,2 --pretrain-variant strict_2011
+```
+
 **标签模式。** 默认 `verified` 使用 `label_*_5y`；登记覆盖未核实时这些标签为空，训练会直接报错退出。`--label-mode provisional_observed` 把登记已观察到的首癌当阳性、其余当阴性，删失者被当作阴性，**只用于调试训练流程，结果不能报告**；两种模式的输出分目录保存，评估不会混用。当前二分类标签排除了删失者；与删失/竞争风险相容的评价（如 IPCW）需在覆盖核实后补充。
 
 ## 输入与输出

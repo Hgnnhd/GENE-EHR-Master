@@ -4,6 +4,11 @@
   "pretrain_max_len": 128,
   "num_workers": 4,
   "seed": 42,
+  "pretrain_variant": "main",
+  "pretrain_variants": {
+    "main":        {"before": "2016-01-01", "note": "A: train-split codes before 2016-01-01 (main analysis)"},
+    "strict_2011": {"before": "2011-01-01", "note": "B: train-split codes before 2011-01-01; no post-2011 information (sensitivity)"}
+  },
   "pretrain": {
     "epochs": 40, "batch_size": 512, "lr": 5e-4, "weight_decay": 0.01, "warmup_frac": 0.05,
     "mask_prob": 0.15, "patience": 4
